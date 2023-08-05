@@ -96,6 +96,36 @@ export class CPU {
         [0x66, [this.ror, this.mode_zp0, 5]],
         [0x76, [this.ror, this.mode_zpx, 6]],
 
+        [0x29, [this.and, this.mode_imm, 2]],
+        [0x2d, [this.and, this.mode_abs, 4]],
+        [0x3d, [this.and, this.mode_abx, 4]],
+        [0x39, [this.and, this.mode_aby, 4]],
+        [0x25, [this.and, this.mode_zp0, 3]],
+        [0x35, [this.and, this.mode_zpx, 4]],
+        [0x21, [this.and, this.mode_izx, 6]],
+        [0x31, [this.and, this.mode_izy, 5]],
+
+        [0x2c, [this.bit, this.mode_abs, 4]],
+        [0x24, [this.bit, this.mode_zp0, 3]],
+
+        [0x49, [this.eor, this.mode_imm, 2]],
+        [0x4d, [this.eor, this.mode_abs, 4]],
+        [0x5d, [this.eor, this.mode_abx, 4]],
+        [0x59, [this.eor, this.mode_aby, 4]],
+        [0x45, [this.eor, this.mode_zp0, 3]],
+        [0x55, [this.eor, this.mode_zpx, 4]],
+        [0x41, [this.eor, this.mode_izx, 6]],
+        [0x51, [this.eor, this.mode_izy, 5]],
+
+        [0x09, [this.ora, this.mode_imm, 2]],
+        [0x0d, [this.ora, this.mode_abs, 4]],
+        [0x1d, [this.ora, this.mode_abx, 4]],
+        [0x19, [this.ora, this.mode_aby, 4]],
+        [0x05, [this.ora, this.mode_zp0, 3]],
+        [0x15, [this.ora, this.mode_zpx, 4]],
+        [0x01, [this.ora, this.mode_izx, 6]],
+        [0x11, [this.ora, this.mode_izy, 5]],
+
         [0x65, [this.adc, this.mode_zp0, 3]],
 
         [0xee, [this.inc, this.mode_abs, 6]],
@@ -715,6 +745,63 @@ export class CPU {
         } else {
             this.memory.set(addr, data);
         }
+    }
+
+    /**
+     * The AND instruction transfer the accumulator and memory to the adder which performs a bit-by-bit AND operation and stores the result back in the accumulator.
+     *
+     * This instruction affects the accumulator; sets the zero flag if the result in the accumulator is 0, otherwise resets the zero flag; sets the negative flag if the result in the accumulator has bit 7 on, otherwise resets the negative flag.
+     *
+     *     A ∧ M → A
+     */
+    and(addr) {
+        this.register_a = this.register_a & this.memory.get(addr);
+
+        this.set_flag(Flags.N, (this.register_a & (1 << 7)) > 0);
+        this.set_flag(Flags.Z, this.register_a === 0);
+    }
+
+    /**
+     * This instruction performs an AND between a memory location and the accumulator but does not store the result of the AND into the accumulator.
+     *
+     * The bit instruction affects the N flag with N being set to the value of bit 7 of the memory being tested, the V flag with V being set equal to bit 6 of the memory being tested and Z being set by the result of the AND operation between the accumulator and the memory if the result is Zero, Z is reset otherwise. It does not affect the accumulator.
+     *
+     *     A ∧ M, M7 → N, M6 → V
+     */
+    bit(addr) {
+        let mem = this.memory.get(addr);
+
+        this.set_flag(Flags.N, (mem & (1 << 7)) > 0);
+        this.set_flag(Flags.Z, (this.register_a & mem) === 0);
+        this.set_flag(Flags.V, (mem & (1 << 6)) > 0);
+    }
+
+    /**
+     * The EOR instruction transfers the memory and the accumulator to the adder which performs a binary "EXCLUSIVE OR" on a bit-by-bit basis and stores the result in the accumulator.
+     *
+     * This instruction affects the accumulator; sets the zero flag if the result in the accumulator is 0, otherwise resets the zero flag sets the negative flag if the result in the accumulator has bit 7 on, otherwise resets the negative flag.
+     *
+     *     A ⊻ M → A
+     */
+    eor(addr) {
+        this.register_a = this.register_a ^ this.memory.get(addr);
+
+        this.set_flag(Flags.N, (this.register_a & (1 << 7)) > 0);
+        this.set_flag(Flags.Z, this.register_a === 0);
+    }
+
+    /**
+     * The ORA instruction transfers the memory and the accumulator to the adder which performs a binary "OR" on a bit-by-bit basis and stores the result in the accumulator.
+     *
+     * This instruction affects the accumulator; sets the zero flag if the result in the accumulator is 0, otherwise resets the zero flag; sets the negative flag if the result in the accumulator has bit 7 on, otherwise resets the negative flag.
+     *
+     *     A ∨ M → A
+     */
+    ora(addr) {
+        this.register_a = this.register_a | this.memory.get(addr);
+
+        this.set_flag(Flags.N, (this.register_a & (1 << 7)) > 0);
+        this.set_flag(Flags.Z, this.register_a === 0);
     }
 
     /**
