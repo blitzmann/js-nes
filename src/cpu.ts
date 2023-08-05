@@ -126,7 +126,40 @@ export class CPU {
         [0x01, [this.ora, this.mode_izx, 6]],
         [0x11, [this.ora, this.mode_izy, 5]],
 
+        [0x69, [this.adc, this.mode_imm, 2]],
+        [0x6d, [this.adc, this.mode_abs, 4]],
+        [0x7d, [this.adc, this.mode_abx, 4]],
+        [0x79, [this.adc, this.mode_aby, 4]],
         [0x65, [this.adc, this.mode_zp0, 3]],
+        [0x75, [this.adc, this.mode_zpx, 4]],
+        [0x61, [this.adc, this.mode_izx, 6]],
+        [0x71, [this.adc, this.mode_izy, 5]],
+
+        [0xc9, [this.cmp, this.mode_imm, 2]],
+        [0xcd, [this.cmp, this.mode_abs, 4]],
+        [0xdd, [this.cmp, this.mode_abx, 4]],
+        [0xd9, [this.cmp, this.mode_aby, 4]],
+        [0xc5, [this.cmp, this.mode_zp0, 3]],
+        [0xd5, [this.cmp, this.mode_zpx, 4]],
+        [0xc1, [this.cmp, this.mode_izx, 6]],
+        [0xd1, [this.cmp, this.mode_izy, 5]],
+
+        [0xe0, [this.cpx, this.mode_imm, 2]],
+        [0xec, [this.cpx, this.mode_abs, 4]],
+        [0xe4, [this.cpx, this.mode_zp0, 3]],
+
+        [0xc0, [this.cpy, this.mode_imm, 2]],
+        [0xcc, [this.cpy, this.mode_abs, 4]],
+        [0xc4, [this.cpy, this.mode_zp0, 3]],
+
+        [0xe9, [this.sbc, this.mode_imm, 2]],
+        [0xed, [this.sbc, this.mode_abs, 4]],
+        [0xfd, [this.sbc, this.mode_abx, 4]],
+        [0xf9, [this.sbc, this.mode_aby, 4]],
+        [0xe5, [this.sbc, this.mode_zp0, 3]],
+        [0xf5, [this.sbc, this.mode_zpx, 4]],
+        [0xe1, [this.sbc, this.mode_izx, 6]],
+        [0xf1, [this.sbc, this.mode_izy, 5]],
 
         [0xee, [this.inc, this.mode_abs, 6]],
         [0xf6, [this.inc, this.mode_zpx, 6]],
@@ -138,6 +171,8 @@ export class CPU {
         [0x00, [this.brk, this.mode_imp, 7]],
 
         [0x6c, [this.jmp, this.mode_ind, 5]],
+
+        [0xea, [this.nop, this.mode_imp, 2]],
     ]);
 
     pc() {
@@ -808,6 +843,8 @@ export class CPU {
      * This instruction adds the value of memory and carry from the previous operation to the value of the accumulator and stores the result in the accumulator.
      *
      * This instruction affects the accumulator; sets the carry flag when the sum of a binary add exceeds 255 or when the sum of a decimal add exceeds 99, otherwise carry is reset. The overflow flag is set when the sign or bit 7 is changed due to the result exceeding +127 or -128, otherwise overflow is reset. The negative flag is set if the accumulator result contains bit 7 on, otherwise the negative flag is reset. The zero flag is set if the accumulator result is 0, otherwise the zero flag is reset.
+     *
+     *     A + M + C → A, C
      */
     adc(data) {
         var fetched = this.memory.get(data);
@@ -820,9 +857,81 @@ export class CPU {
             !!(~(this.register_a ^ fetched) & (this.register_a ^ tmp) & 0x0080)
         );
 
-        this.register_a = tmp & 0x00ff; // truncate to 255
+        this.register_a = tmp & 0xff; // truncate to 255
 
-        this.set_flag(Flags.C, tmp > 255);
+        this.set_flag(Flags.C, tmp > 0xff);
+        this.set_flag(Flags.Z, this.register_a === 0);
+        this.set_flag(Flags.N, !!(tmp & 0x0080));
+    }
+
+    /**
+     * This instruction subtracts the contents of memory from the contents of the accumulator.
+     *
+     * The use of the CMP affects the following flags: Z flag is set on an equal comparison, reset otherwise; the N flag is set or reset by the result bit 7, the carry flag is set when the value in memory is less than or equal to the accumulator, reset when it is greater than the accumulator. The accumulator is not affected.
+     *
+     *     A - M
+     */
+    cmp(data) {
+        let tmp = this.register_a - this.memory.get(data);
+
+        this.set_flag(Flags.C, this.memory.get(data) <= this.register_a);
+        this.set_flag(Flags.Z, this.register_a === this.memory.get(data));
+        this.set_flag(Flags.N, (tmp & (1 << 7)) > 0);
+    }
+
+    /**
+     * This instruction subtracts the value of the addressed memory location from the content of index register X using the adder but does not store the result; therefore, its only use is to set the N, Z and C flags to allow for comparison between the index register X and the value in memory.
+     *
+     * The CPX instruction does not affect any register in the machine; it also does not affect the overflow flag. It causes the carry to be set on if the absolute value of the index register X is equal to or greater than the data from memory. If the value of the memory is greater than the content of the index register X, carry is reset. If the results of the subtraction contain a bit 7, then the N flag is set, if not, it is reset. If the value in memory is equal to the value in index register X, the Z flag is set, otherwise it is reset.qual to the accumulator, reset when it is greater than the accumulator. The accumulator is not affected.
+     *
+     *     X - M
+     */
+    cpx(data) {
+        let tmp = this.register_x - this.memory.get(data);
+
+        this.set_flag(Flags.C, this.memory.get(data) <= this.register_x);
+        this.set_flag(Flags.Z, this.register_x === this.memory.get(data));
+        this.set_flag(Flags.N, (tmp & (1 << 7)) > 0);
+    }
+
+    /**
+     * This instruction performs a two's complement subtraction between the index register Y and the specified memory location. The results of the subtraction are not stored anywhere. The instruction is strict­ly used to set the flags.
+     *
+     * CPY affects no registers in the microprocessor and also does not affect the overflow flag. If the value in the index register Y is equal to or greater than the value in the memory, the carry flag will be set, otherwise it will be cleared. If the results of the subtract- tion contain bit 7 on the N bit will be set, otherwise it will be cleared. If the value in the index register Y and the value in the memory are equal, the zero flag will be set, otherwise it will be cleared.
+     *
+     *     Y - M
+     */
+    cpy(data) {
+        let tmp = this.register_y - this.memory.get(data);
+
+        this.set_flag(Flags.C, this.memory.get(data) <= this.register_y);
+        this.set_flag(Flags.Z, this.register_y === this.memory.get(data));
+        this.set_flag(Flags.N, (tmp & (1 << 7)) > 0);
+    }
+
+    /**
+     * This instruction subtracts the value of memory and borrow from the value of the accumulator, using two's complement arithmetic, and stores the result in the accumulator. Borrow is defined as the carry flag complemented; therefore, a resultant carry flag indicates that a borrow has not occurred.
+     *
+     * This instruction affects the accumulator. The carry flag is set if the result is greater than or equal to 0. The carry flag is reset when the result is less than 0, indicating a borrow. The over­flow flag is set when the result exceeds +127 or -127, otherwise it is reset. The negative flag is set if the result in the accumulator has bit 7 on, otherwise it is reset. The Z flag is set if the result in the accumulator is 0, otherwise it is reset.
+     *
+     *     A - M - ~C → A
+     */
+    sbc(data) {
+        // this is the same as ADC, with the memory data ~
+        var fetched = ~this.memory.get(data);
+        const tmp = this.register_a + fetched + ~this.get_flag_bit(Flags.C);
+
+        //https://stackoverflow.com/questions/29193303/6502-emulation-proper-way-to-implement-adc-and-sbc
+        // Overflow: https://forums.nesdev.org/viewtopic.php?t=6331
+        // https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
+        this.set_flag(
+            Flags.V,
+            !!(~(this.register_a ^ fetched) & (this.register_a ^ tmp) & 0x0080)
+        );
+
+        this.register_a = tmp & 0xff; // truncate to 255
+
+        this.set_flag(Flags.C, tmp > 0xff);
         this.set_flag(Flags.Z, this.register_a === 0);
         this.set_flag(Flags.N, !!(tmp & 0x0080));
     }
@@ -851,6 +960,8 @@ export class CPU {
     brk(_) {
         this.stopped = true;
     }
+
+    nop(_) {}
 }
 
 export enum Flags {
