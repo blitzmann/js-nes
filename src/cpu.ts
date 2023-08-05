@@ -6,15 +6,47 @@
 export class CPU {
     program = [];
 
-    program_counter = -1;
-    register_a = 0x0;
-    register_x = 0x0;
-    register_y = 0x0;
-    stack_pointer = 0x0;
     cycles = 0;
     stopped = false;
     status_register = 0; // [NV-BDIZC]
     memory = new Map();
+
+    /**
+     * We use a Uint8Array to force 8-bit unsigned numbers.
+     * This helps in situations where increments or decrements overflow.
+     */
+    registers = new Uint8Array(5);
+
+    get register_a() {
+        return this.registers[0];
+    }
+    set register_a(val) {
+        this.registers[0] = val;
+    }
+    get register_x() {
+        return this.registers[1];
+    }
+    set register_x(val) {
+        this.registers[1] = val;
+    }
+    get register_y() {
+        return this.registers[2];
+    }
+    set register_y(val) {
+        this.registers[2] = val;
+    }
+    get program_counter() {
+        return this.registers[3];
+    }
+    set program_counter(val) {
+        this.registers[3] = val;
+    }
+    get stack_pointer() {
+        return this.registers[4];
+    }
+    set stack_pointer(val) {
+        this.registers[4] = val;
+    }
 
     stack_offset = 0x0100;
 
@@ -161,10 +193,21 @@ export class CPU {
         [0xe1, [this.sbc, this.mode_izx, 6]],
         [0xf1, [this.sbc, this.mode_izy, 5]],
 
+        [0xce, [this.dec, this.mode_abs, 6]],
+        [0xde, [this.dec, this.mode_abx, 7]],
+        [0xc6, [this.dec, this.mode_zp0, 5]],
+        [0xd6, [this.dec, this.mode_zpx, 6]],
+
+        [0xca, [this.dex, this.mode_imp, 2]],
+        [0x88, [this.dey, this.mode_imp, 2]],
+
         [0xee, [this.inc, this.mode_abs, 6]],
-        [0xf6, [this.inc, this.mode_zpx, 6]],
         [0xf6, [this.inc, this.mode_abx, 7]],
         [0xe6, [this.inc, this.mode_zp0, 5]],
+        [0xf6, [this.inc, this.mode_zpx, 6]],
+
+        [0xe8, [this.inx, this.mode_imp, 2]],
+        [0xc8, [this.iny, this.mode_imp, 2]],
 
         [0xa4, [this.ldy, this.mode_zp0, 3]],
         [0xc8, [this.iny, this.mode_imp, 2]],
@@ -919,7 +962,7 @@ export class CPU {
     sbc(data) {
         // this is the same as ADC, with the memory data ~
         var fetched = ~this.memory.get(data);
-        const tmp = this.register_a + fetched + ~this.get_flag_bit(Flags.C);
+        const tmp = this.register_a + fetched + this.get_flag_bit(Flags.C);
 
         //https://stackoverflow.com/questions/29193303/6502-emulation-proper-way-to-implement-adc-and-sbc
         // Overflow: https://forums.nesdev.org/viewtopic.php?t=6331
@@ -937,20 +980,94 @@ export class CPU {
     }
 
     /**
+     * This instruction subtracts 1, in two's complement, from the contents of the addressed memory location.
+     *
+     * The decrement instruction does not affect any internal register in the microprocessor. It does not affect the carry or overflow flags. If bit 7 is on as a result of the decrement, then the N flag is set, otherwise it is reset. If the result of the decrement is 0, the Z flag is set, other­wise it is reset.
+     *
+     *     M - 1 → M
+     */
+    dec(data) {
+        // this is the same as ADC, with the memory data ~
+        var fetched = this.memory.get(data) - 1;
+        this.memory.set(data, fetched);
+
+        this.set_flag(Flags.Z, fetched === 0);
+        this.set_flag(Flags.N, (fetched & (1 << 7)) > 0);
+    }
+
+    /**
+     * This instruction subtracts one from the current value of the index register X and stores the result in the index register X.
+     *
+     * DEX does not affect the carry or overflow flag, it sets the N flag if it has bit 7 on as a result of the decrement, otherwise it resets the N flag; sets the Z flag if X is a 0 as a result of the decrement, otherwise it resets the Z flag.
+     *
+     *     X - 1 → X
+     */
+    dex(_) {
+        // this is the same as ADC, with the memory data ~
+        this.register_x--;
+
+        this.set_flag(Flags.Z, this.register_x === 0);
+        this.set_flag(Flags.N, (this.register_x & (1 << 7)) > 0);
+    }
+
+    /**
+     * This instruction subtracts one from the current value in the in­ dex register Y and stores the result into the index register Y. The result does not affect or consider carry so that the value in the index register Y is decremented to 0 and then through 0 to FF.
+     *
+     * Decrement Y does not affect the carry or overflow flags; if the Y register contains bit 7 on as a result of the decrement the N flag is set, otherwise the N flag is reset. If the Y register is 0 as a result of the decrement, the Z flag is set otherwise the Z flag is reset. This instruction only affects the index register Y.
+     *
+     *     Y - 1 → Y
+     */
+    dey(_) {
+        // this is the same as ADC, with the memory data ~
+        this.register_y--;
+
+        this.set_flag(Flags.Z, this.register_y === 0);
+        this.set_flag(Flags.N, (this.register_y & (1 << 7)) > 0);
+    }
+
+    /**
      * This instruction adds 1 to the contents of the addressed memory loca­tion.
      *
      * The increment memory instruction does not affect any internal registers and does not affect the carry or overflow flags. If bit 7 is on as the result of the increment,N is set, otherwise it is reset; if the increment causes the result to become 0, the Z flag is set on, otherwise it is reset.
+     *
+     *     M + 1 → M
      */
     inc(data) {
         const val = this.memory.get(data) + 1;
         this.memory.set(data, val);
 
         this.set_flag(Flags.Z, val === 0);
-        this.set_flag(Flags.N, !!(val & 0x0080));
+        this.set_flag(Flags.N, (val & (1 << 7)) > 0);
     }
 
+    /**
+     * Increment X adds 1 to the current value of the X register. This is an 8-bit increment which does not affect the carry operation, therefore, if the value of X before the increment was FF, the resulting value is 00.
+     *
+     * INX does not affect the carry or overflow flags; it sets the N flag if the result of the increment has a one in bit 7, otherwise resets N; sets the Z flag if the result of the increment is 0, otherwise it resets the Z flag.
+     *
+     * INX does not affect any other register other than the X register.
+     *
+     *     X + 1 → X
+     */
+    inx(_) {
+        this.register_x++;
+
+        this.set_flag(Flags.Z, this.register_x === 0);
+        this.set_flag(Flags.N, (this.register_x & (1 << 7)) > 0);
+    }
+
+    /**
+     * Increment Y increments or adds one to the current value in the Y register, storing the result in the Y register. As in the case of INX the primary application is to step thru a set of values using the Y register.
+     *
+     * The INY does not affect the carry or overflow flags, sets the N flag if the result of the increment has a one in bit 7, otherwise resets N, sets Z if as a result of the increment the Y register is zero otherwise resets the Z flag.
+     *
+     *     Y + 1 → Y
+     */
     iny(_) {
-        this.register_y += 1;
+        this.register_y++;
+
+        this.set_flag(Flags.Z, this.register_y === 0);
+        this.set_flag(Flags.N, (this.register_y & (1 << 7)) > 0);
     }
 
     jmp(_) {
