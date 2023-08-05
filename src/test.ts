@@ -1,5 +1,5 @@
 import test from 'ava';
-import { CPU } from './cpu';
+import { CPU, Flags } from './cpu';
 
 test('simple program', (t) => {
     const cpu = new CPU();
@@ -87,4 +87,106 @@ test('addr_mode_rel', (t) => {
     cpu.pc();
     var data = cpu.mode_rel();
     t.is(data, 0x05);
+});
+
+test('ASL A < 127', (t) => {
+    const cpu = new CPU();
+    // prettier-ignore
+    cpu.load_program([
+        0x0a, // ASL A
+        0.00 // BRK
+    ]);
+
+    cpu.register_a = 127;
+    cpu.run_program();
+
+    t.is(cpu.register_a, 0xfe);
+    t.is(cpu.get_flag(Flags.C), false);
+    t.is(cpu.get_flag(Flags.N), true);
+    t.is(cpu.get_flag(Flags.Z), false);
+});
+
+test('ASL A = 128', (t) => {
+    const cpu = new CPU();
+    // prettier-ignore
+    cpu.load_program([
+      0x0a, // ASL A
+      0.00 // BRK
+  ]);
+
+    cpu.register_a = 128;
+    cpu.run_program();
+
+    t.is(cpu.register_a, 0x0);
+    t.is(cpu.get_flag(Flags.C), true);
+    t.is(cpu.get_flag(Flags.N), false);
+    t.is(cpu.get_flag(Flags.Z), true);
+});
+
+test('ASL A > 128', (t) => {
+    const cpu = new CPU();
+    // prettier-ignore
+    cpu.load_program([
+      0x0a, // ASL A
+      0.00 // BRK
+  ]);
+
+    cpu.register_a = 129;
+    cpu.run_program();
+
+    t.is(cpu.register_a, 0x02);
+    t.is(cpu.get_flag(Flags.C), true);
+    t.is(cpu.get_flag(Flags.N), false);
+    t.is(cpu.get_flag(Flags.Z), false);
+});
+
+test('LSR A = 254', (t) => {
+    const cpu = new CPU();
+    // prettier-ignore
+    cpu.load_program([
+    0x4a, // ASL A
+    0.00 // BRK
+]);
+
+    cpu.register_a = 254;
+    cpu.run_program();
+
+    t.is(cpu.register_a, 0x7f);
+    t.is(cpu.get_flag(Flags.C), false);
+    t.is(cpu.get_flag(Flags.N), false);
+    t.is(cpu.get_flag(Flags.Z), false);
+});
+
+test('LSR A = 255', (t) => {
+    const cpu = new CPU();
+    // prettier-ignore
+    cpu.load_program([
+    0x4a, // ASL A
+    0.00 // BRK
+]);
+
+    cpu.register_a = 255;
+    cpu.run_program();
+
+    t.is(cpu.register_a, 0x7f);
+    t.is(cpu.get_flag(Flags.C), true);
+    t.is(cpu.get_flag(Flags.N), false);
+    t.is(cpu.get_flag(Flags.Z), false);
+});
+
+test('LSR A = 1', (t) => {
+    const cpu = new CPU();
+    // prettier-ignore
+    cpu.load_program([
+    0x4a, // ASL A
+    0.00 // BRK
+]);
+
+    cpu.register_a = 1;
+    cpu.run_program();
+
+    t.is(cpu.register_a, 0x0);
+    t.is(cpu.get_flag(Flags.C), true);
+    t.is(cpu.get_flag(Flags.N), false);
+    t.is(cpu.get_flag(Flags.Z), true);
 });

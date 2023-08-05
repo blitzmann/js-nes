@@ -13,11 +13,13 @@ export class CPU {
     stack_pointer = 0x0;
     cycles = 0;
     stopped = false;
-    status_register = 0;
+    status_register = 0; // [NV-BDIZC]
     memory = new Map();
 
     stack_offset = 0x0100;
 
+    // transient
+    mode;
     addr;
 
     opcodes = new Map<number, [(data?: number) => void, () => number, number]>([
@@ -70,6 +72,30 @@ export class CPU {
         [0x68, [this.pla, this.mode_imp, 4]],
         [0x28, [this.plp, this.mode_imp, 4]],
 
+        [0x0a, [this.asl, this.mode_acc, 2]],
+        [0x0e, [this.asl, this.mode_abs, 6]],
+        [0x1e, [this.asl, this.mode_abx, 7]],
+        [0x06, [this.asl, this.mode_zp0, 5]],
+        [0x16, [this.asl, this.mode_zpx, 6]],
+
+        [0x4a, [this.lsr, this.mode_acc, 2]],
+        [0x4e, [this.lsr, this.mode_abs, 6]],
+        [0x5e, [this.lsr, this.mode_abx, 7]],
+        [0x46, [this.lsr, this.mode_zp0, 5]],
+        [0x56, [this.lsr, this.mode_zpx, 6]],
+
+        [0x2a, [this.rol, this.mode_acc, 2]],
+        [0x2e, [this.rol, this.mode_abs, 6]],
+        [0x3e, [this.rol, this.mode_abx, 7]],
+        [0x26, [this.rol, this.mode_zp0, 5]],
+        [0x36, [this.rol, this.mode_zpx, 6]],
+
+        [0x6a, [this.ror, this.mode_acc, 2]],
+        [0x6e, [this.ror, this.mode_abs, 6]],
+        [0x7e, [this.ror, this.mode_abx, 7]],
+        [0x66, [this.ror, this.mode_zp0, 5]],
+        [0x76, [this.ror, this.mode_zpx, 6]],
+
         [0x65, [this.adc, this.mode_zp0, 3]],
 
         [0xee, [this.inc, this.mode_abs, 6]],
@@ -106,6 +132,7 @@ export class CPU {
         }
 
         const [op, mode, cycles] = op_def;
+        this.mode = mode;
         this.addr = mode.bind(this)();
 
         op.bind(this)(this.addr);
@@ -364,6 +391,12 @@ export class CPU {
         return;
     }
 
+    /**
+     * ACC: Accumulator
+     */
+    mode_acc() {
+        return;
+    }
     //************************ INSTRUCTIONS **************************/
 
     /**
@@ -575,6 +608,116 @@ export class CPU {
     }
 
     /**
+     * The shift left instruction shifts either the accumulator or the address memory location 1 bit to the left, with the bit 0 always being set to 0 and the the input bit 7 being stored in the carry flag. ASL either shifts the accumulator left 1 bit or is a read/modify/write instruction that affects only memory.
+     *
+     * The instruction does not affect the overflow bit, sets N equal to the result bit 7 (bit 6 in the input), sets Z flag if the result is equal to 0, otherwise resets Z and stores the input bit 7 in the carry flag.
+     *
+     *     C ← /M7...M0/ ← 0
+     */
+    asl(addr) {
+        let data =
+            this.mode === this.mode_acc
+                ? this.register_a
+                : this.memory.get(addr);
+        data = data << 1;
+
+        this.set_flag(Flags.C, (data & 0xff00) > 0);
+        this.set_flag(Flags.N, !!(data & (1 << 7)));
+
+        data = data & 0xff;
+        this.set_flag(Flags.Z, data === 0);
+
+        if (this.mode === this.mode_acc) {
+            this.register_a = data;
+        } else {
+            this.memory.set(addr, data);
+        }
+    }
+
+    /**
+     * This instruction shifts either the accumulator or a specified memory location 1 bit to the right, with the higher bit of the result always being set to 0, and the low bit which is shifted out of the field being stored in the carry flag.
+     *
+     * The shift right instruction either affects the accumulator by shift­ing it right 1 or is a read/modify/write instruction which changes a speci­fied memory location but does not affect any internal registers. The shift right does not affect the overflow flag. The N flag is always reset. The Z flag is set if the result of the shift is 0 and reset otherwise. The carry is set equal to bit 0 of the input.
+     *
+     *     0 → /M7...M0/ → C
+     */
+    lsr(addr) {
+        let data =
+            this.mode === this.mode_acc
+                ? this.register_a
+                : this.memory.get(addr);
+
+        this.set_flag(Flags.C, (data & 1) > 0);
+
+        data = data >> 1;
+
+        this.set_flag(Flags.N, false);
+        this.set_flag(Flags.Z, data === 0);
+
+        if (this.mode === this.mode_acc) {
+            this.register_a = data;
+        } else {
+            this.memory.set(addr, data);
+        }
+    }
+
+    /**
+     * The rotate left instruction shifts either the accumulator or addressed memory left 1 bit, with the input carry being stored in bit 0 and with the input bit 7 being stored in the carry flags.
+     *
+     * The ROL instruction either shifts the accumulator left 1 bit and stores the carry in accumulator bit 0 or does not affect the internal reg­isters at all. The ROL instruction sets carry equal to the input bit 7, sets N equal to the input bit 6 , sets the Z flag if the result of the ro­ tate is 0, otherwise it resets Z and does not affect the overflow flag at all.
+     *
+     *     C ← /M7...M0/ ← C
+     */
+    rol(addr) {
+        let data =
+            this.mode === this.mode_acc
+                ? this.register_a
+                : this.memory.get(addr);
+
+        // set bit 0 with current carry
+        data = (data << 1) | this.get_flag_bit(Flags.C);
+        this.set_flag(Flags.C, (data & (1 << 8)) > 0);
+        data = data & 0xff;
+
+        this.set_flag(Flags.N, (data & (1 << 7)) > 0);
+        this.set_flag(Flags.Z, data === 0);
+
+        if (this.mode === this.mode_acc) {
+            this.register_a = data;
+        } else {
+            this.memory.set(addr, data);
+        }
+    }
+
+    /**
+     * The rotate right instruction shifts either the accumulator or addressed memory right 1 bit with bit 0 shifted into the carry and carry shifted into bit 7.
+     *
+     * The ROR instruction either shifts the accumulator right 1 bit and stores the carry in accumulator bit 7 or does not affect the internal regis­ ters at all. The ROR instruction sets carry equal to input bit 0, sets N equal to the input carry and sets the Z flag if the result of the rotate is 0; otherwise it resets Z and does not affect the overflow flag at all.
+     *
+     *     C → /M7...M0/ → C
+     */
+    ror(addr) {
+        let data =
+            this.mode === this.mode_acc
+                ? this.register_a
+                : this.memory.get(addr);
+
+        // set carry to front
+        data |= this.get_flag_bit(Flags.C) << 8;
+        this.set_flag(Flags.C, (data & 1) > 0);
+        data = data >> 1;
+
+        this.set_flag(Flags.N, (data & (1 << 7)) > 0);
+        this.set_flag(Flags.Z, data === 0);
+
+        if (this.mode === this.mode_acc) {
+            this.register_a = data;
+        } else {
+            this.memory.set(addr, data);
+        }
+    }
+
+    /**
      * This instruction adds the value of memory and carry from the previous operation to the value of the accumulator and stores the result in the accumulator.
      *
      * This instruction affects the accumulator; sets the carry flag when the sum of a binary add exceeds 255 or when the sum of a decimal add exceeds 99, otherwise carry is reset. The overflow flag is set when the sign or bit 7 is changed due to the result exceeding +127 or -128, otherwise overflow is reset. The negative flag is set if the accumulator result contains bit 7 on, otherwise the negative flag is reset. The zero flag is set if the accumulator result is 0, otherwise the zero flag is reset.
@@ -614,7 +757,7 @@ export class CPU {
         this.register_y += 1;
     }
 
-    jmp(data) {
+    jmp(_) {
         console.warn('jmp not implemented');
     }
 
@@ -623,11 +766,11 @@ export class CPU {
     }
 }
 
-enum Flags {
+export enum Flags {
     /**
      * The carry flag (C) flag is used as a buffer and as a borrow in arithmetic operations. Any comparisons will update this additionally to the Z and N flags, as do shift and rotate operations.
      */
-    C,
+    C = 1 << 0,
     /**
      * The zero flag (Z) indicates a value of all zero bits and the negative flag (N) indicates the presence of a set sign bit in bit-position 7. These flags are always updated, whenever a value is transferred to a CPU register (A,X,Y) and as a result of any logical ALU operations. The Z and N flags are also updated by increment and decrement operations acting on a memory location.
      */
