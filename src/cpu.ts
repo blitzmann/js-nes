@@ -16,6 +16,8 @@ export class CPU {
     status_register = 0;
     memory = new Map();
 
+    stack_offset = 0x0100;
+
     addr;
 
     opcodes = new Map<number, [(data?: number) => void, () => number, number]>([
@@ -62,6 +64,11 @@ export class CPU {
         [0x8a, [this.txa, this.mode_imp, 2]],
         [0x9a, [this.txs, this.mode_imp, 2]],
         [0x98, [this.tya, this.mode_imp, 2]],
+
+        [0x48, [this.pha, this.mode_imp, 3]],
+        [0x08, [this.php, this.mode_imp, 3]],
+        [0x68, [this.pla, this.mode_imp, 4]],
+        [0x28, [this.plp, this.mode_imp, 4]],
 
         [0x65, [this.adc, this.mode_zp0, 3]],
 
@@ -510,6 +517,61 @@ export class CPU {
 
         this.set_flag(Flags.Z, this.register_a === 0);
         this.set_flag(Flags.N, !!(this.register_a & (1 << 7)));
+    }
+
+    /**
+     * This instruction transfers the current value of the accumulator to the next location on the stack, automatically decrementing the stack to point to the next empty location.
+     *
+     * The Push A instruction only affects the stack pointer register which is decremented by 1 as a result of the operation. It affects no flags.
+     *
+     *     A↓
+     */
+    pha(_) {
+        this.memory.set(
+            this.stack_offset + this.stack_pointer,
+            this.register_a
+        );
+        this.stack_pointer--;
+    }
+
+    /**
+     * This instruction transfers the contents of the processor status reg­ister unchanged to the stack, as governed by the stack pointer.
+     *
+     * The PHP instruction affects no registers or flags in the micropro­cessor.
+     *
+     *     P↓
+     */
+    php(_) {
+        this.memory.set(
+            this.stack_offset + this.stack_pointer,
+            this.status_register
+        );
+    }
+
+    /**
+     * This instruction adds 1 to the current value of the stack pointer and uses it to address the stack and loads the contents of the stack into the A register.
+     *
+     * The PLA instruction does not affect the carry or overflow flags. It sets N if the bit 7 is on in accumulator A as a result of instructions, otherwise it is reset. If accumulator A is zero as a result of the PLA, then the Z flag is set, otherwise it is reset. The PLA instruction changes content of the accumulator A to the contents of the memory location at stack register plus 1 and also increments the stack register.
+     */
+    pla(_) {
+        this.stack_pointer++;
+        this.register_a = this.memory.get(
+            this.stack_offset + this.stack_pointer
+        );
+        this.set_flag(Flags.Z, this.register_a === 0);
+        this.set_flag(Flags.N, !!(this.register_a & (1 << 7)));
+    }
+
+    /**
+     * This instruction transfers the next value on the stack to the Proces­sor Status register, thereby changing all of the flags and setting the mode switches to the values from the stack.
+     *
+     * The PLP instruction affects no registers in the processor other than the status register. This instruction could affect all flags in the status register.
+     */
+    plp(_) {
+        this.stack_pointer++;
+        this.status_register = this.memory.get(
+            this.stack_offset + this.stack_pointer
+        );
     }
 
     /**
