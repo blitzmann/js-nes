@@ -10,6 +10,7 @@ export class CPU {
     register_a = 0x0;
     register_x = 0x0;
     register_y = 0x0;
+    stack_pointer = 0x0;
     cycles = 0;
     stopped = false;
     status_register = 0;
@@ -54,6 +55,13 @@ export class CPU {
         [0x8c, [this.sty, this.mode_abs, 4]],
         [0x84, [this.sty, this.mode_zp0, 3]],
         [0x94, [this.sty, this.mode_zpy, 4]],
+
+        [0xaa, [this.tax, this.mode_imp, 2]],
+        [0xa8, [this.tay, this.mode_imp, 2]],
+        [0xba, [this.tsx, this.mode_imp, 2]],
+        [0x8a, [this.txa, this.mode_imp, 2]],
+        [0x9a, [this.txs, this.mode_imp, 2]],
+        [0x98, [this.tya, this.mode_imp, 2]],
 
         [0x65, [this.adc, this.mode_zp0, 3]],
 
@@ -421,6 +429,87 @@ export class CPU {
      */
     sty(data) {
         this.memory.set(data, this.register_y);
+    }
+
+    /**
+     * This instruction takes the value from accumulator A and trans­fers or loads it into the index register X without disturbing the content of the accumulator A.
+     *
+     * TAX only affects the index register X, does not affect the carry or overflow flags. The N flag is set if the resultant value in the index register X has bit 7 on, otherwise N is reset. The Z bit is set if the content of the register X is 0 as aresult of theopera­ tion, otherwise it is reset.
+     *
+     *     A → X
+     */
+    tax(_) {
+        this.register_x = this.register_a;
+
+        this.set_flag(Flags.Z, this.register_x === 0);
+        this.set_flag(Flags.N, !!(this.register_x & (1 << 7)));
+    }
+
+    /**
+     * This instruction moves the value of the accumulator into index register Y without affecting the accumulator.
+     *
+     * TAY instruction only affects the Y register and does not affect either the carry or overflow flags. If the index register Y has bit 7 on, then N is set, otherwise it is reset. If the content of the index register Y equals 0 as a result of the operation, Z is set on, otherwise it is reset.
+     *
+     *     A → Y
+     */
+    tay(_) {
+        this.register_y = this.register_a;
+
+        this.set_flag(Flags.Z, this.register_y === 0);
+        this.set_flag(Flags.N, !!(this.register_y & (1 << 7)));
+    }
+
+    /**
+     * This instruction transfers the value in the stack pointer to the index register X.
+     *
+     * TSX does not affect the carry or overflow flags. It sets N if bit 7 is on in index X as a result of the instruction, otherwise it is reset. If index X is zero as a result of the TSX, the Z flag is set, other­ wise it is reset. TSX changes the value of index X, making it equal to the content of the stack pointer.
+     *
+     *     S → X
+     */
+    tsx(_) {
+        this.register_x = this.stack_pointer;
+
+        this.set_flag(Flags.Z, this.register_x === 0);
+        this.set_flag(Flags.N, !!(this.register_x & (1 << 7)));
+    }
+
+    /**
+     * This instruction moves the value that is in the index register X to the accumulator A without disturbing the content of the index register X.
+     *
+     * TXA does not affect any register other than the accumula­tor and does not affect the carry or overflow flag. If the result in A has bit 7 on, then the N flag is set, otherwise it is reset. If the resultant value in the accumulator is 0, then the Z flag is set, other­ wise it is reset.
+     *
+     *     X → A
+     */
+    txa(_) {
+        this.register_a = this.register_a;
+
+        this.set_flag(Flags.Z, this.register_a === 0);
+        this.set_flag(Flags.N, !!(this.register_a & (1 << 7)));
+    }
+
+    /**
+     * This instruction transfers the value in the index register X to the stack pointer.
+     *
+     * TXS changes only the stack pointer, making it equal to the content of the index register X. It does not affect any of the flags.
+     *
+     *     X → S
+     */
+    txs(_) {
+        this.stack_pointer = this.register_x;
+    }
+
+    /**
+     * This instruction moves the value that is in the index register Y to accumulator A without disturbing the content of the register Y.
+     *
+     * TYA does not affect any other register other than the accumula­ tor and does not affect the carry or overflow flag. If the result in the accumulator A has bit 7 on, the N flag is set, otherwise it is reset. If the resultant value in the accumulator A is 0, then the Z flag is set, otherwise it is reset.
+     *
+     *     Y → A
+     */
+    tya(_) {
+        this.register_a = this.register_y;
+
+        this.set_flag(Flags.Z, this.register_a === 0);
+        this.set_flag(Flags.N, !!(this.register_a & (1 << 7)));
     }
 
     /**
