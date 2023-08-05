@@ -23,3 +23,68 @@ test('simple program', (t) => {
     t.is(cpu.register_a, 0x11);
     t.is(cpu.register_y, 0x13);
 });
+
+test('addr_mode_indirect', (t) => {
+    const cpu = new CPU();
+    // prettier-ignore
+    cpu.load_program([
+      0x6c, 0x82, 0xff // JMP ($FF82)
+    ]);
+
+    cpu.memory.set(0xff82, 0xc4);
+    cpu.memory.set(0xff83, 0x80);
+
+    cpu.pc(); // increment program counter - we don't actually need the opcode for this test
+    var data = cpu.mode_ind();
+    t.is(data, 0x80c4);
+});
+
+test('addr_mode_izx', (t) => {
+    const cpu = new CPU();
+    // prettier-ignore
+    cpu.load_program([
+      0xa1, 0x70 // LDA ($70,X)
+    ]);
+
+    cpu.register_x = 0x05;
+
+    cpu.memory.set(0x75, 0x23);
+    cpu.memory.set(0x76, 0x30);
+    cpu.memory.set(0x3023, 0xa5);
+
+    cpu.pc(); // increment program counter - we don't actually need the opcode for this test
+    var data = cpu.mode_izx();
+    t.is(data, 0xa5);
+});
+
+test('addr_mode_izy', (t) => {
+    const cpu = new CPU();
+    // prettier-ignore
+    cpu.load_program([
+      0xb1, 0x70 // ($70),Y
+    ]);
+
+    cpu.register_y = 0x10;
+
+    cpu.memory.set(0x70, 0x43);
+    cpu.memory.set(0x71, 0x35);
+    cpu.memory.set(0x3553, 0x23);
+
+    cpu.pc(); // increment program counter - we don't actually need the opcode for this test
+    var data = cpu.mode_izy();
+    t.is(data, 0x23);
+});
+
+test('addr_mode_rel', (t) => {
+    const cpu = new CPU();
+    // prettier-ignore
+    cpu.load_program([
+    0xea, // NOOP
+    0xf0, 0x03 // ($70),Y
+  ]);
+
+    cpu.pc(); // increment program counter twice
+    cpu.pc();
+    var data = cpu.mode_rel();
+    t.is(data, 0x05);
+});
