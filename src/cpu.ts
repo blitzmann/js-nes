@@ -1293,12 +1293,92 @@ export class CPU {
         return 0;
     }
 
+    /**
+     * Used for branching operations.
+     */
     branch(rel_addr) {
         const addr = this.ip + rel_addr;
         // add an extra cycle if it's on a different page
         const ret = this.same_page(addr, this.ip) ? 0 : 1;
         this.ip = addr;
         return ret;
+    }
+
+    /**
+     * This instruction initializes the carry flag to a 0. This op­ eration should normally precede an ADC loop. It is also useful when used with a R0L instruction to clear a bit in memory.
+     *
+     * This instruction affects no registers in the microprocessor and no flags other than the carry flag which is reset.
+     *
+     *     0 → C
+     */
+    clc(_) {
+        this.set_flag(Flags.C, false);
+    }
+
+    /**
+     * This instruction sets the decimal mode flag to a 0. This all subsequent ADC and SBC instructions to operate as simple operations.
+     *
+     * CLD affects no registers in the microprocessor and no flags other than the decimal mode flag which is set to a 0.
+     *
+     *     0 → D
+     */
+    cld(_) {
+        this.set_flag(Flags.D, false);
+    }
+
+    /**
+     * This instruction initializes the interrupt disable to a 0. This allows the microprocessor to receive interrupts.
+     *
+     * It affects no registers in the microprocessor and no flags other than the interrupt disable which is cleared.
+     *
+     *     0 → I
+     */
+    cli(_) {
+        this.set_flag(Flags.I, false);
+    }
+
+    /**
+     * This instruction clears the overflow flag to a 0. This com­ mand is used in conjunction with the set overflow pin which can change the state of the overflow flag with an external signal.
+     *
+     * CLV affects no registers in the microprocessor and no flags other than the overflow flag which is set to a 0.
+     *
+     *     0 → V
+     */
+    clv(_) {
+        this.set_flag(Flags.V, false);
+    }
+
+    /**
+     * This instruction initializes the carry flag to a 1. This op eration should normally precede a SBC loop. It is also useful when used with a ROL instruction to initialize a bit in memory to a 1.
+     *
+     * This instruction affects no registers in the microprocessor and no flags other than the carry flag which is set.
+     *
+     *     1 → C
+     */
+    sec(_) {
+        this.set_flag(Flags.C, true);
+    }
+
+    /**
+     * This instruction sets the decimal mode flag D to a 1. This makes all subsequent ADC and SBC instructions operate as a decimal arithmetic operation.
+     *
+     * SED affects no registers in the microprocessor and no flags other than the decimal mode which is set to a 1.
+     *
+     *     1 → D
+     */
+    sed(_) {
+        this.set_flag(Flags.D, true);
+    }
+
+    /**
+     * This instruction initializes the interrupt disable to a 1. It is used to mask interrupt requests during system reset operations and during interrupt commands.
+     *
+     * It affects no registers in the microprocessor and no flags other than the interrupt disable which is set.
+     *
+     *     1 → I
+     */
+    sei(_) {
+        this.set_flag(Flags.I, true);
     }
 
     nop(_) {}
