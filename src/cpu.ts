@@ -334,7 +334,7 @@ export class CPU {
         this.a = 0;
         this.x = 0;
         this.y = 0;
-        this.sp = 0xff;
+        this.sp = 0xfd;
         this.ip = addr;
         this.set_flag(Flags.I, true);
         this.cycles = 7;
