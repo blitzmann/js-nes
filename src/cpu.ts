@@ -4,6 +4,8 @@
  * https://www.pagetable.com/c64ref/6502/?tab=3
  */
 
+import { Memory } from './memory';
+
 // const NMI_ADDRESS = 0xfffa;
 const RESET_ADDRESS = 0xfffc;
 const IRQ_ADDRESS = 0xfffe;
@@ -13,8 +15,18 @@ export class CPU {
 
     cycles = 0;
     stopped = false;
-    status_register = 0; // [NV-BDIZC]
-    memory = new Map();
+    ip = 0;
+    memory = new Memory(0xffff);
+    _log = '';
+
+    log(msg) {
+        this._log += msg;
+    }
+
+    flush_log() {
+        console.log(this._log);
+        this._log = '';
+    }
 
     /**
      * We use a Uint8Array to force 8-bit unsigned numbers.
@@ -40,10 +52,10 @@ export class CPU {
     set y(val) {
         this.registers[2] = val;
     }
-    get ip() {
+    get sr() {
         return this.registers[3];
     }
-    set ip(val) {
+    set sr(val) {
         this.registers[3] = val;
     }
     get sp() {
@@ -251,8 +263,8 @@ export class CPU {
         return (addr1 & 0xff00) === (addr2 & 0xff00);
     }
 
-    load_program(bytes) {
-        this.program = bytes;
+    load_program(bytes, offset = 0x00) {
+        this.memory.load(bytes, offset);
     }
 
     run_program() {
@@ -261,16 +273,38 @@ export class CPU {
         }
     }
 
+    cpu_fetch() {
+        const ret = this.memory.get(this.ip++);
+        this.log(ret.toString(16).padStart(2, '0').toUpperCase() + ' ');
+        return ret;
+    }
+
     step() {
-        const opcode = this.program[this.pc()];
+        this.log(
+            `${this.ip.toString(16).toUpperCase()}`.padEnd(5, ' ') + ' | '
+        );
+        const opcode = this.cpu_fetch();
+
         const op_def = this.opcodes.get(opcode);
         if (!op_def) {
-            console.log('unknown op code: 0x' + opcode.toString(16));
+            console.error('unknown op code: 0x' + opcode.toString(16));
         }
-
         const [op, mode, cycles] = op_def;
         this.mode = mode;
         this.addr = mode.bind(this)();
+        this.log(' | ' + op.name.toUpperCase() + ' ');
+        this.log(
+            ` | A:${this.a.toString(16).toUpperCase()} X:${this.x
+                .toString(16)
+                .toUpperCase()} Y: ${this.y
+                .toString(16)
+                .toUpperCase()} P:${this.sr
+                .toString(16)
+                .toUpperCase()} SP:${this.sp.toString(16).toUpperCase()} CYC:${
+                this.cycles
+            }`
+        );
+        this.flush_log();
 
         op.bind(this)(this.addr);
         this.cycles += cycles;
@@ -296,14 +330,14 @@ export class CPU {
 
     reset() {
         const addr = this.fetch_word(RESET_ADDRESS);
-        this.status_register = 0;
+        this.sr = 0;
         this.a = 0;
         this.x = 0;
         this.y = 0;
         this.sp = 0xff;
         this.ip = addr;
         this.set_flag(Flags.I, true);
-        this.cycles = 8;
+        this.cycles = 7;
     }
 
     peek(addr) {
@@ -312,9 +346,9 @@ export class CPU {
 
     set_flag(flag: Flags, val: boolean) {
         if (val) {
-            this.status_register |= flag;
+            this.sr |= flag;
         } else {
-            this.status_register &= ~flag;
+            this.sr &= ~flag;
         }
     }
 
@@ -330,7 +364,7 @@ export class CPU {
     }
 
     get_flag(flag: Flags) {
-        return !!(this.status_register & flag);
+        return !!(this.sr & flag);
     }
 
     get_flag_bit(flag: Flags) {
@@ -348,8 +382,8 @@ export class CPU {
      * CPX #$32; compare the X-register to the literal hexidecimal value "$32"
      */
     mode_imm() {
-        this.ip++;
-        return this.program[this.ip];
+        const ret = this.cpu_fetch();
+        return ret;
     }
 
     /**
@@ -365,10 +399,8 @@ export class CPU {
      * JMP $4000; jump to (continue with) location "$4000"
      */
     mode_abs() {
-        this.ip++;
-        let low = this.program[this.ip];
-        this.ip++;
-        let high = this.program[this.ip];
+        let low = this.cpu_fetch();
+        let high = this.cpu_fetch();
         return (high << 8) | low;
     }
 
@@ -385,8 +417,7 @@ export class CPU {
      * ASL $9A; arithmetic shift left of the contents of location "$009A"
      */
     mode_zp0() {
-        this.ip++;
-        return this.program[this.ip];
+        return this.cpu_fetch();
     }
 
     /**
@@ -402,10 +433,8 @@ export class CPU {
      * INC $1400,X; increment the contents of address "$1400 + X"
      */
     mode_abx() {
-        this.ip++;
-        let low = this.program[this.ip];
-        this.ip++;
-        let high = this.program[this.ip];
+        let low = this.cpu_fetch();
+        let high = this.cpu_fetch();
         return ((high << 8) | low) + this.x;
     }
 
@@ -422,10 +451,8 @@ export class CPU {
      * INC $1400,X; increment the contents of address "$1400 + X"
      */
     mode_aby() {
-        this.ip++;
-        let low = this.program[this.ip];
-        this.ip++;
-        let high = this.program[this.ip];
+        let low = this.cpu_fetch();
+        let high = this.cpu_fetch();
         return ((high << 8) | low) + this.y;
     }
 
@@ -444,8 +471,7 @@ export class CPU {
      * LDX $60,Y; load the contents of address "$0060 + Y" into X
      */
     mode_zpx() {
-        this.ip++;
-        return (this.program[this.ip] + this.x) & 0x00ff; // truncate to 255. We do not care about carry.
+        return (this.cpu_fetch() + this.x) & 0x00ff; // truncate to 255. We do not care about carry.
     }
 
     /**
@@ -463,8 +489,7 @@ export class CPU {
      * LDX $60,Y; load the contents of address "$0060 + Y" into X
      */
     mode_zpy() {
-        this.ip++;
-        return (this.program[this.ip] + this.y) & 0x00ff; // truncate to 255. We do not care about carry.
+        return (this.cpu_fetch() + this.y) & 0x00ff; // truncate to 255. We do not care about carry.
     }
 
     /**
@@ -480,10 +505,8 @@ export class CPU {
      * JMP ($FF82); jump to address given in addresses "$FF82" and "$FF83"
      */
     mode_ind() {
-        this.ip++;
-        let low = this.program[this.ip];
-        this.ip++;
-        let high = this.program[this.ip];
+        let low = this.cpu_fetch();
+        let high = this.cpu_fetch();
         const addr = (high << 8) | low;
 
         low = this.memory.get(addr);
@@ -508,8 +531,7 @@ export class CPU {
      * EOR ($BA,X); perform an exlusive OR of the contents of A and the contents of the location given in addresses "$00BA+X" and "$00BB+X"
      */
     mode_izx() {
-        this.ip++;
-        let addr = this.program[this.ip] + this.x;
+        let addr = this.cpu_fetch() + this.x;
 
         let low = this.memory.get(addr);
         let high = this.memory.get(addr + 1);
@@ -532,8 +554,7 @@ export class CPU {
      * EOR ($BA),Y; perform an exlusive OR of the contents of A and the address given by the addition of Y to the pointer in "$00BA" and "$00BB"
      */
     mode_izy() {
-        this.ip++;
-        let addr = this.program[this.ip];
+        let addr = this.cpu_fetch();
 
         let low = this.memory.get(addr);
         let high = this.memory.get(addr + 1);
@@ -558,8 +579,7 @@ export class CPU {
      * BCC $084A; branch to location "$084A", if the carry flag is clear.
      */
     mode_rel() {
-        this.ip++;
-        return this.program[this.ip] + this.ip;
+        return this.cpu_fetch() + this.ip;
     }
 
     /**
@@ -750,7 +770,7 @@ export class CPU {
      *     P↓
      */
     php(_) {
-        this.memory.set(this.stack_offset + this.sp, this.status_register);
+        this.memory.set(this.stack_offset + this.sp, this.sr);
     }
 
     /**
@@ -772,7 +792,7 @@ export class CPU {
      */
     plp(_) {
         this.sp++;
-        this.status_register = this.memory.get(this.stack_offset + this.sp);
+        this.sr = this.memory.get(this.stack_offset + this.sp);
     }
 
     /**
@@ -1131,7 +1151,7 @@ export class CPU {
         this.stack_push(this.ip >> 8);
         this.stack_push(this.ip & 0xff);
         // push status register with the B flag set
-        this.stack_push((this.status_register |= Flags.B));
+        this.stack_push((this.sr |= Flags.B));
         // get IRQ address
         this.ip = this.fetch_word(IRQ_ADDRESS);
     }
@@ -1168,7 +1188,7 @@ export class CPU {
      *     P↑ PC↑
      */
     rti(_) {
-        this.status_register = this.stack_pop();
+        this.sr = this.stack_pop();
         const low = this.stack_pop();
         const high = this.stack_pop();
         this.ip = (high << 8) | low;
@@ -1304,8 +1324,7 @@ export class CPU {
     /**
      * Used for branching operations.
      */
-    branch(rel_addr) {
-        const addr = this.ip + rel_addr;
+    branch(addr) {
         // add an extra cycle if it's on a different page
         const ret = this.same_page(addr, this.ip) ? 0 : 1;
         this.ip = addr;

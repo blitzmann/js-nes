@@ -1,5 +1,21 @@
 import test from 'ava';
 import { CPU, Flags } from './cpu';
+import * as fs from 'fs';
+
+test('load rom', (t) => {
+    var myArrayBuffer = fs.readFileSync(
+        'C:\\gitRoot\\js-nes\\js-nes\\js-nes\\nestest.nes',
+        null
+    );
+
+    const cpu = new CPU();
+    // prettier-ignore
+    cpu.load_program(myArrayBuffer, 0xC000-16)
+    cpu.memory.set(0xfffc, 0x00);
+    cpu.memory.set(0xfffd, 0xc0);
+    cpu.reset();
+    cpu.run_program();
+});
 
 test('simple program', (t) => {
     const cpu = new CPU();
