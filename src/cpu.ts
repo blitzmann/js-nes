@@ -358,8 +358,8 @@ export class CPU {
     }
 
     stack_pop() {
-        const val = this.memory.get(this.stack_offset + this.sp);
         this.sp++;
+        const val = this.memory.get(this.stack_offset + this.sp);
         return val;
     }
 
