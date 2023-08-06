@@ -217,8 +217,11 @@ export class CPU {
         [0xc8, [this.iny, this.mode_imp, 2]],
 
         [0x00, [this.brk, this.mode_imp, 7]],
-
+        [0x4c, [this.jmp, this.mode_abs, 3]],
         [0x6c, [this.jmp, this.mode_ind, 5]],
+        [0x20, [this.jsr, this.mode_abs, 6]],
+        [0x40, [this.rti, this.mode_imp, 6]],
+        [0x60, [this.rts, this.mode_imp, 6]],
 
         [0xea, [this.nop, this.mode_imp, 2]],
     ]);
@@ -299,9 +302,10 @@ export class CPU {
         this.sp--;
     }
 
-    stack_pop(data) {
-        this.memory.set(this.stack_offset + this.sp, data);
+    stack_pop() {
+        const val = this.memory.get(this.stack_offset + this.sp);
         this.sp++;
+        return val;
     }
 
     get_flag(flag: Flags) {
@@ -1093,10 +1097,13 @@ export class CPU {
         this.set_flag(Flags.N, (this.y & (1 << 7)) > 0);
     }
 
-    jmp(_) {
-        console.warn('jmp not implemented');
-    }
-
+    /**
+     * The break command causes the microprocessor to go through an inter­ rupt sequence under program control. This means that the program counter of the second byte after the BRK. is automatically stored on the stack along with the processor status at the beginning of the break instruction. The microprocessor then transfers control to the interrupt vector.
+     *
+     * Other than changing the program counter, the break instruction changes no values in either the registers or the flags.
+     *
+     *     PC + 2↓, [FFFE] → PCL, [FFFF] → PCH
+     */
     brk(_) {
         this.set_flag(Flags.I, true);
         // push program counter high-bit first
@@ -1106,6 +1113,57 @@ export class CPU {
         this.stack_push((this.status_register |= Flags.B));
         // get IRQ address
         this.ip = this.fetch_word(IRQ_ADDRESS);
+    }
+
+    /**
+     * This instruction establishes a new valne for the program counter.
+     *
+     * It affects only the program counter in the microprocessor and affects no flags in the status register.
+     *
+     *     [PC + 1] → PCL, [PC + 2] → PCH
+     */
+    jmp(data) {
+        this.ip = data;
+    }
+
+    /**
+     * This instruction transfers control of the program counter to a subroutine location but leaves a return pointer on the stack to allow the user to return to perform the next instruction in the main program after the subroutine is complete. To accomplish this, JSR instruction stores the program counter address which points to the last byte of the jump instruc­ tion onto the stack using the stack pointer. The stack byte contains the program count high first, followed by program count low. The JSR then transfers the addresses following the jump instruction to the program counter low and the program counter high, thereby directing the program to begin at that new address.
+     *
+     * The JSR instruction affects no flags, causes the stack pointer to be decremented by 2 and substitutes new values into the program counter low and the program counter high.
+     *
+     *     PC + 2↓, [PC + 1] → PCL, [PC + 2] → PCH
+     */
+    jsr(data) {
+        this.stack_push(this.ip >> 8);
+        this.stack_push(this.ip & 0xff);
+        this.ip = data;
+    }
+
+    /**
+     * This instruction transfers from the stack into the microprocessor the processor status and the program counter location for the instruction which was interrupted. By virtue of the interrupt having stored this data before executing the instruction and thei fact that the RTI reinitializes the microprocessor to the same state as when it was interrupted, the combination of interrupt plus RTI allows truly reentrant coding.
+     *
+     * The RTI instruction reinitializes all flags to the position to the point they were at the time the interrupt was taken and sets the program counter back to its pre-interrupt state. It affects no other registers in the microprocessor.
+     *
+     *     P↑ PC↑
+     */
+    rti(_) {
+        this.status_register = this.stack_pop();
+        const low = this.stack_pop();
+        const high = this.stack_pop();
+        this.ip = (high << 8) | low;
+    }
+
+    /**
+     * This instruction loads the program count low and program count high from the stack into the program counter and increments the program counter so that it points to the instruction following the JSR. The stack pointer is adjusted by incrementing it twice.
+     *
+     * The RTS instruction does not affect any flags and affects only PCL and PCH.
+     *
+     *     PC↑, PC + 1 → PC
+     */
+    rts(_) {
+        const low = this.stack_pop();
+        const high = this.stack_pop();
+        this.ip = (high << 8) | low;
     }
 
     nop(_) {}
