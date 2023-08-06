@@ -20,8 +20,8 @@ test('simple program', (t) => {
 
     t.is(cpu.peek(0x20), 0x10);
     t.is(cpu.peek(0x21), 0x12);
-    t.is(cpu.register_a, 0x11);
-    t.is(cpu.register_y, 0x13);
+    t.is(cpu.a, 0x11);
+    t.is(cpu.y, 0x13);
 });
 
 test('addr_mode_indirect', (t) => {
@@ -34,7 +34,7 @@ test('addr_mode_indirect', (t) => {
     cpu.memory.set(0xff82, 0xc4);
     cpu.memory.set(0xff83, 0x80);
 
-    cpu.pc(); // increment program counter - we don't actually need the opcode for this test
+    cpu.ip(); // increment program counter - we don't actually need the opcode for this test
     var data = cpu.mode_ind();
     t.is(data, 0x80c4);
 });
@@ -46,13 +46,13 @@ test('addr_mode_izx', (t) => {
       0xa1, 0x70 // LDA ($70,X)
     ]);
 
-    cpu.register_x = 0x05;
+    cpu.x = 0x05;
 
     cpu.memory.set(0x75, 0x23);
     cpu.memory.set(0x76, 0x30);
     cpu.memory.set(0x3023, 0xa5);
 
-    cpu.pc(); // increment program counter - we don't actually need the opcode for this test
+    cpu.ip(); // increment program counter - we don't actually need the opcode for this test
     var data = cpu.mode_izx();
     t.is(data, 0xa5);
 });
@@ -64,13 +64,13 @@ test('addr_mode_izy', (t) => {
       0xb1, 0x70 // ($70),Y
     ]);
 
-    cpu.register_y = 0x10;
+    cpu.y = 0x10;
 
     cpu.memory.set(0x70, 0x43);
     cpu.memory.set(0x71, 0x35);
     cpu.memory.set(0x3553, 0x23);
 
-    cpu.pc(); // increment program counter - we don't actually need the opcode for this test
+    cpu.ip(); // increment program counter - we don't actually need the opcode for this test
     var data = cpu.mode_izy();
     t.is(data, 0x23);
 });
@@ -83,8 +83,8 @@ test('addr_mode_rel', (t) => {
     0xf0, 0x03 // ($70),Y
   ]);
 
-    cpu.pc(); // increment program counter twice
-    cpu.pc();
+    cpu.ip(); // increment program counter twice
+    cpu.ip();
     var data = cpu.mode_rel();
     t.is(data, 0x05);
 });
@@ -97,10 +97,10 @@ test('ASL A < 127', (t) => {
         0.00 // BRK
     ]);
 
-    cpu.register_a = 127;
+    cpu.a = 127;
     cpu.run_program();
 
-    t.is(cpu.register_a, 0xfe);
+    t.is(cpu.a, 0xfe);
     t.is(cpu.get_flag(Flags.C), false);
     t.is(cpu.get_flag(Flags.N), true);
     t.is(cpu.get_flag(Flags.Z), false);
@@ -114,10 +114,10 @@ test('ASL A = 128', (t) => {
       0.00 // BRK
   ]);
 
-    cpu.register_a = 128;
+    cpu.a = 128;
     cpu.run_program();
 
-    t.is(cpu.register_a, 0x0);
+    t.is(cpu.a, 0x0);
     t.is(cpu.get_flag(Flags.C), true);
     t.is(cpu.get_flag(Flags.N), false);
     t.is(cpu.get_flag(Flags.Z), true);
@@ -131,10 +131,10 @@ test('ASL A > 128', (t) => {
       0.00 // BRK
   ]);
 
-    cpu.register_a = 129;
+    cpu.a = 129;
     cpu.run_program();
 
-    t.is(cpu.register_a, 0x02);
+    t.is(cpu.a, 0x02);
     t.is(cpu.get_flag(Flags.C), true);
     t.is(cpu.get_flag(Flags.N), false);
     t.is(cpu.get_flag(Flags.Z), false);
@@ -148,10 +148,10 @@ test('LSR A = 254', (t) => {
     0.00 // BRK
 ]);
 
-    cpu.register_a = 254;
+    cpu.a = 254;
     cpu.run_program();
 
-    t.is(cpu.register_a, 0x7f);
+    t.is(cpu.a, 0x7f);
     t.is(cpu.get_flag(Flags.C), false);
     t.is(cpu.get_flag(Flags.N), false);
     t.is(cpu.get_flag(Flags.Z), false);
@@ -165,10 +165,10 @@ test('LSR A = 255', (t) => {
     0.00 // BRK
 ]);
 
-    cpu.register_a = 255;
+    cpu.a = 255;
     cpu.run_program();
 
-    t.is(cpu.register_a, 0x7f);
+    t.is(cpu.a, 0x7f);
     t.is(cpu.get_flag(Flags.C), true);
     t.is(cpu.get_flag(Flags.N), false);
     t.is(cpu.get_flag(Flags.Z), false);
@@ -182,10 +182,10 @@ test('LSR A = 1', (t) => {
     0.00 // BRK
 ]);
 
-    cpu.register_a = 1;
+    cpu.a = 1;
     cpu.run_program();
 
-    t.is(cpu.register_a, 0x0);
+    t.is(cpu.a, 0x0);
     t.is(cpu.get_flag(Flags.C), true);
     t.is(cpu.get_flag(Flags.N), false);
     t.is(cpu.get_flag(Flags.Z), true);

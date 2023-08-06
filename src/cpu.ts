@@ -3,6 +3,11 @@
  * https://www.masswerk.at/6502/6502_instruction_set.html
  * https://www.pagetable.com/c64ref/6502/?tab=3
  */
+
+const NMI_ADDRESS = 0xfffa;
+const RESET_ADDRESS = 0xfffc;
+const IRQ_ADDRESS = 0xfffe;
+
 export class CPU {
     program = [];
 
@@ -17,34 +22,34 @@ export class CPU {
      */
     registers = new Uint8Array(5);
 
-    get register_a() {
+    get a() {
         return this.registers[0];
     }
-    set register_a(val) {
+    set a(val) {
         this.registers[0] = val;
     }
-    get register_x() {
+    get x() {
         return this.registers[1];
     }
-    set register_x(val) {
+    set x(val) {
         this.registers[1] = val;
     }
-    get register_y() {
+    get y() {
         return this.registers[2];
     }
-    set register_y(val) {
+    set y(val) {
         this.registers[2] = val;
     }
-    get program_counter() {
+    get ip() {
         return this.registers[3];
     }
-    set program_counter(val) {
+    set ip(val) {
         this.registers[3] = val;
     }
-    get stack_pointer() {
+    get sp() {
         return this.registers[4];
     }
-    set stack_pointer(val) {
+    set sp(val) {
         this.registers[4] = val;
     }
 
@@ -219,7 +224,7 @@ export class CPU {
     ]);
 
     pc() {
-        return (this.program_counter += 1);
+        return (this.ip += 1);
     }
 
     load_program(bytes) {
@@ -245,6 +250,36 @@ export class CPU {
 
         op.bind(this)(this.addr);
         this.cycles += cycles;
+    }
+
+    /**
+     * Fetch a single byte from memory
+     */
+    fetch_byte(addr) {
+        return this.memory.get(addr);
+    }
+
+    /**
+     * Fetch a word from memory, starting at `addr`. This is helpful for getting memory addresses
+     *
+     * @returns $<addr+1><addr>
+     */
+    fetch_word(addr) {
+        let low = this.memory.get(addr);
+        let high = this.memory.get(addr + 1);
+        return (high << 8) | low;
+    }
+
+    reset() {
+        const addr = this.fetch_word(RESET_ADDRESS);
+        this.status_register = 0;
+        this.a = 0;
+        this.x = 0;
+        this.y = 0;
+        this.sp = 0xff;
+        this.ip = addr;
+        this.set_flag(Flags.I, true);
+        this.cycles = 8;
     }
 
     peek(addr) {
@@ -278,8 +313,8 @@ export class CPU {
      * CPX #$32; compare the X-register to the literal hexidecimal value "$32"
      */
     mode_imm() {
-        this.program_counter++;
-        return this.program[this.program_counter];
+        this.ip++;
+        return this.program[this.ip];
     }
 
     /**
@@ -295,10 +330,10 @@ export class CPU {
      * JMP $4000; jump to (continue with) location "$4000"
      */
     mode_abs() {
-        this.program_counter++;
-        let low = this.program[this.program_counter];
-        this.program_counter++;
-        let high = this.program[this.program_counter];
+        this.ip++;
+        let low = this.program[this.ip];
+        this.ip++;
+        let high = this.program[this.ip];
         return (high << 8) | low;
     }
 
@@ -315,8 +350,8 @@ export class CPU {
      * ASL $9A; arithmetic shift left of the contents of location "$009A"
      */
     mode_zp0() {
-        this.program_counter++;
-        return this.program[this.program_counter];
+        this.ip++;
+        return this.program[this.ip];
     }
 
     /**
@@ -332,11 +367,11 @@ export class CPU {
      * INC $1400,X; increment the contents of address "$1400 + X"
      */
     mode_abx() {
-        this.program_counter++;
-        let low = this.program[this.program_counter];
-        this.program_counter++;
-        let high = this.program[this.program_counter];
-        return ((high << 8) | low) + this.register_x;
+        this.ip++;
+        let low = this.program[this.ip];
+        this.ip++;
+        let high = this.program[this.ip];
+        return ((high << 8) | low) + this.x;
     }
 
     /**
@@ -352,11 +387,11 @@ export class CPU {
      * INC $1400,X; increment the contents of address "$1400 + X"
      */
     mode_aby() {
-        this.program_counter++;
-        let low = this.program[this.program_counter];
-        this.program_counter++;
-        let high = this.program[this.program_counter];
-        return ((high << 8) | low) + this.register_y;
+        this.ip++;
+        let low = this.program[this.ip];
+        this.ip++;
+        let high = this.program[this.ip];
+        return ((high << 8) | low) + this.y;
     }
 
     /**
@@ -374,8 +409,8 @@ export class CPU {
      * LDX $60,Y; load the contents of address "$0060 + Y" into X
      */
     mode_zpx() {
-        this.program_counter++;
-        return (this.program[this.program_counter] + this.register_x) & 0x00ff; // truncate to 255. We do not care about carry.
+        this.ip++;
+        return (this.program[this.ip] + this.x) & 0x00ff; // truncate to 255. We do not care about carry.
     }
 
     /**
@@ -393,8 +428,8 @@ export class CPU {
      * LDX $60,Y; load the contents of address "$0060 + Y" into X
      */
     mode_zpy() {
-        this.program_counter++;
-        return (this.program[this.program_counter] + this.register_y) & 0x00ff; // truncate to 255. We do not care about carry.
+        this.ip++;
+        return (this.program[this.ip] + this.y) & 0x00ff; // truncate to 255. We do not care about carry.
     }
 
     /**
@@ -410,10 +445,10 @@ export class CPU {
      * JMP ($FF82); jump to address given in addresses "$FF82" and "$FF83"
      */
     mode_ind() {
-        this.program_counter++;
-        let low = this.program[this.program_counter];
-        this.program_counter++;
-        let high = this.program[this.program_counter];
+        this.ip++;
+        let low = this.program[this.ip];
+        this.ip++;
+        let high = this.program[this.ip];
         const addr = (high << 8) | low;
 
         low = this.memory.get(addr);
@@ -438,8 +473,8 @@ export class CPU {
      * EOR ($BA,X); perform an exlusive OR of the contents of A and the contents of the location given in addresses "$00BA+X" and "$00BB+X"
      */
     mode_izx() {
-        this.program_counter++;
-        let addr = this.program[this.program_counter] + this.register_x;
+        this.ip++;
+        let addr = this.program[this.ip] + this.x;
 
         let low = this.memory.get(addr);
         let high = this.memory.get(addr + 1);
@@ -462,13 +497,13 @@ export class CPU {
      * EOR ($BA),Y; perform an exlusive OR of the contents of A and the address given by the addition of Y to the pointer in "$00BA" and "$00BB"
      */
     mode_izy() {
-        this.program_counter++;
-        let addr = this.program[this.program_counter];
+        this.ip++;
+        let addr = this.program[this.ip];
 
         let low = this.memory.get(addr);
         let high = this.memory.get(addr + 1);
         addr = (high << 8) | low;
-        return this.memory.get(addr + this.register_y);
+        return this.memory.get(addr + this.y);
     }
 
     /**
@@ -488,8 +523,8 @@ export class CPU {
      * BCC $084A; branch to location "$084A", if the carry flag is clear.
      */
     mode_rel() {
-        this.program_counter++;
-        return this.program[this.program_counter] + this.program_counter;
+        this.ip++;
+        return this.program[this.ip] + this.ip;
     }
 
     /**
@@ -515,9 +550,9 @@ export class CPU {
      *     M → A
      */
     lda(data) {
-        this.register_a = data;
-        this.set_flag(Flags.Z, this.register_a === 0);
-        this.set_flag(Flags.N, !!(this.register_a & (1 << 7)));
+        this.a = data;
+        this.set_flag(Flags.Z, this.a === 0);
+        this.set_flag(Flags.N, !!(this.a & (1 << 7)));
     }
 
     /**
@@ -528,9 +563,9 @@ export class CPU {
      *     M → X
      */
     ldx(data) {
-        this.register_x = data;
-        this.set_flag(Flags.Z, this.register_x === 0);
-        this.set_flag(Flags.N, !!(this.register_x & (1 << 7)));
+        this.x = data;
+        this.set_flag(Flags.Z, this.x === 0);
+        this.set_flag(Flags.N, !!(this.x & (1 << 7)));
     }
 
     /**
@@ -541,9 +576,9 @@ export class CPU {
      *     M → Y
      */
     ldy(data) {
-        this.register_y = data;
-        this.set_flag(Flags.Z, this.register_y === 0);
-        this.set_flag(Flags.N, !!(this.register_y & (1 << 7)));
+        this.y = data;
+        this.set_flag(Flags.Z, this.y === 0);
+        this.set_flag(Flags.N, !!(this.y & (1 << 7)));
     }
 
     /**
@@ -554,7 +589,7 @@ export class CPU {
      *     A → M
      */
     sta(data) {
-        this.memory.set(data, this.register_a);
+        this.memory.set(data, this.a);
     }
 
     /**
@@ -565,7 +600,7 @@ export class CPU {
      *     X → M
      */
     stx(data) {
-        this.memory.set(data, this.register_x);
+        this.memory.set(data, this.x);
     }
 
     /**
@@ -576,7 +611,7 @@ export class CPU {
      *     Y → M
      */
     sty(data) {
-        this.memory.set(data, this.register_y);
+        this.memory.set(data, this.y);
     }
 
     /**
@@ -587,10 +622,10 @@ export class CPU {
      *     A → X
      */
     tax(_) {
-        this.register_x = this.register_a;
+        this.x = this.a;
 
-        this.set_flag(Flags.Z, this.register_x === 0);
-        this.set_flag(Flags.N, !!(this.register_x & (1 << 7)));
+        this.set_flag(Flags.Z, this.x === 0);
+        this.set_flag(Flags.N, !!(this.x & (1 << 7)));
     }
 
     /**
@@ -601,10 +636,10 @@ export class CPU {
      *     A → Y
      */
     tay(_) {
-        this.register_y = this.register_a;
+        this.y = this.a;
 
-        this.set_flag(Flags.Z, this.register_y === 0);
-        this.set_flag(Flags.N, !!(this.register_y & (1 << 7)));
+        this.set_flag(Flags.Z, this.y === 0);
+        this.set_flag(Flags.N, !!(this.y & (1 << 7)));
     }
 
     /**
@@ -615,10 +650,10 @@ export class CPU {
      *     S → X
      */
     tsx(_) {
-        this.register_x = this.stack_pointer;
+        this.x = this.sp;
 
-        this.set_flag(Flags.Z, this.register_x === 0);
-        this.set_flag(Flags.N, !!(this.register_x & (1 << 7)));
+        this.set_flag(Flags.Z, this.x === 0);
+        this.set_flag(Flags.N, !!(this.x & (1 << 7)));
     }
 
     /**
@@ -629,10 +664,10 @@ export class CPU {
      *     X → A
      */
     txa(_) {
-        this.register_a = this.register_a;
+        this.a = this.a;
 
-        this.set_flag(Flags.Z, this.register_a === 0);
-        this.set_flag(Flags.N, !!(this.register_a & (1 << 7)));
+        this.set_flag(Flags.Z, this.a === 0);
+        this.set_flag(Flags.N, !!(this.a & (1 << 7)));
     }
 
     /**
@@ -643,7 +678,7 @@ export class CPU {
      *     X → S
      */
     txs(_) {
-        this.stack_pointer = this.register_x;
+        this.sp = this.x;
     }
 
     /**
@@ -654,10 +689,10 @@ export class CPU {
      *     Y → A
      */
     tya(_) {
-        this.register_a = this.register_y;
+        this.a = this.y;
 
-        this.set_flag(Flags.Z, this.register_a === 0);
-        this.set_flag(Flags.N, !!(this.register_a & (1 << 7)));
+        this.set_flag(Flags.Z, this.a === 0);
+        this.set_flag(Flags.N, !!(this.a & (1 << 7)));
     }
 
     /**
@@ -668,11 +703,8 @@ export class CPU {
      *     A↓
      */
     pha(_) {
-        this.memory.set(
-            this.stack_offset + this.stack_pointer,
-            this.register_a
-        );
-        this.stack_pointer--;
+        this.memory.set(this.stack_offset + this.sp, this.a);
+        this.sp--;
     }
 
     /**
@@ -683,10 +715,7 @@ export class CPU {
      *     P↓
      */
     php(_) {
-        this.memory.set(
-            this.stack_offset + this.stack_pointer,
-            this.status_register
-        );
+        this.memory.set(this.stack_offset + this.sp, this.status_register);
     }
 
     /**
@@ -695,12 +724,10 @@ export class CPU {
      * The PLA instruction does not affect the carry or overflow flags. It sets N if the bit 7 is on in accumulator A as a result of instructions, otherwise it is reset. If accumulator A is zero as a result of the PLA, then the Z flag is set, otherwise it is reset. The PLA instruction changes content of the accumulator A to the contents of the memory location at stack register plus 1 and also increments the stack register.
      */
     pla(_) {
-        this.stack_pointer++;
-        this.register_a = this.memory.get(
-            this.stack_offset + this.stack_pointer
-        );
-        this.set_flag(Flags.Z, this.register_a === 0);
-        this.set_flag(Flags.N, !!(this.register_a & (1 << 7)));
+        this.sp++;
+        this.a = this.memory.get(this.stack_offset + this.sp);
+        this.set_flag(Flags.Z, this.a === 0);
+        this.set_flag(Flags.N, !!(this.a & (1 << 7)));
     }
 
     /**
@@ -709,10 +736,8 @@ export class CPU {
      * The PLP instruction affects no registers in the processor other than the status register. This instruction could affect all flags in the status register.
      */
     plp(_) {
-        this.stack_pointer++;
-        this.status_register = this.memory.get(
-            this.stack_offset + this.stack_pointer
-        );
+        this.sp++;
+        this.status_register = this.memory.get(this.stack_offset + this.sp);
     }
 
     /**
@@ -723,10 +748,7 @@ export class CPU {
      *     C ← /M7...M0/ ← 0
      */
     asl(addr) {
-        let data =
-            this.mode === this.mode_acc
-                ? this.register_a
-                : this.memory.get(addr);
+        let data = this.mode === this.mode_acc ? this.a : this.memory.get(addr);
         data = data << 1;
 
         this.set_flag(Flags.C, (data & 0xff00) > 0);
@@ -736,7 +758,7 @@ export class CPU {
         this.set_flag(Flags.Z, data === 0);
 
         if (this.mode === this.mode_acc) {
-            this.register_a = data;
+            this.a = data;
         } else {
             this.memory.set(addr, data);
         }
@@ -750,10 +772,7 @@ export class CPU {
      *     0 → /M7...M0/ → C
      */
     lsr(addr) {
-        let data =
-            this.mode === this.mode_acc
-                ? this.register_a
-                : this.memory.get(addr);
+        let data = this.mode === this.mode_acc ? this.a : this.memory.get(addr);
 
         this.set_flag(Flags.C, (data & 1) > 0);
 
@@ -763,7 +782,7 @@ export class CPU {
         this.set_flag(Flags.Z, data === 0);
 
         if (this.mode === this.mode_acc) {
-            this.register_a = data;
+            this.a = data;
         } else {
             this.memory.set(addr, data);
         }
@@ -777,10 +796,7 @@ export class CPU {
      *     C ← /M7...M0/ ← C
      */
     rol(addr) {
-        let data =
-            this.mode === this.mode_acc
-                ? this.register_a
-                : this.memory.get(addr);
+        let data = this.mode === this.mode_acc ? this.a : this.memory.get(addr);
 
         // set bit 0 with current carry
         data = (data << 1) | this.get_flag_bit(Flags.C);
@@ -791,7 +807,7 @@ export class CPU {
         this.set_flag(Flags.Z, data === 0);
 
         if (this.mode === this.mode_acc) {
-            this.register_a = data;
+            this.a = data;
         } else {
             this.memory.set(addr, data);
         }
@@ -805,10 +821,7 @@ export class CPU {
      *     C → /M7...M0/ → C
      */
     ror(addr) {
-        let data =
-            this.mode === this.mode_acc
-                ? this.register_a
-                : this.memory.get(addr);
+        let data = this.mode === this.mode_acc ? this.a : this.memory.get(addr);
 
         // set carry to front
         data |= this.get_flag_bit(Flags.C) << 8;
@@ -819,7 +832,7 @@ export class CPU {
         this.set_flag(Flags.Z, data === 0);
 
         if (this.mode === this.mode_acc) {
-            this.register_a = data;
+            this.a = data;
         } else {
             this.memory.set(addr, data);
         }
@@ -833,10 +846,10 @@ export class CPU {
      *     A ∧ M → A
      */
     and(addr) {
-        this.register_a = this.register_a & this.memory.get(addr);
+        this.a = this.a & this.memory.get(addr);
 
-        this.set_flag(Flags.N, (this.register_a & (1 << 7)) > 0);
-        this.set_flag(Flags.Z, this.register_a === 0);
+        this.set_flag(Flags.N, (this.a & (1 << 7)) > 0);
+        this.set_flag(Flags.Z, this.a === 0);
     }
 
     /**
@@ -850,7 +863,7 @@ export class CPU {
         let mem = this.memory.get(addr);
 
         this.set_flag(Flags.N, (mem & (1 << 7)) > 0);
-        this.set_flag(Flags.Z, (this.register_a & mem) === 0);
+        this.set_flag(Flags.Z, (this.a & mem) === 0);
         this.set_flag(Flags.V, (mem & (1 << 6)) > 0);
     }
 
@@ -862,10 +875,10 @@ export class CPU {
      *     A ⊻ M → A
      */
     eor(addr) {
-        this.register_a = this.register_a ^ this.memory.get(addr);
+        this.a = this.a ^ this.memory.get(addr);
 
-        this.set_flag(Flags.N, (this.register_a & (1 << 7)) > 0);
-        this.set_flag(Flags.Z, this.register_a === 0);
+        this.set_flag(Flags.N, (this.a & (1 << 7)) > 0);
+        this.set_flag(Flags.Z, this.a === 0);
     }
 
     /**
@@ -876,10 +889,10 @@ export class CPU {
      *     A ∨ M → A
      */
     ora(addr) {
-        this.register_a = this.register_a | this.memory.get(addr);
+        this.a = this.a | this.memory.get(addr);
 
-        this.set_flag(Flags.N, (this.register_a & (1 << 7)) > 0);
-        this.set_flag(Flags.Z, this.register_a === 0);
+        this.set_flag(Flags.N, (this.a & (1 << 7)) > 0);
+        this.set_flag(Flags.Z, this.a === 0);
     }
 
     /**
@@ -891,19 +904,19 @@ export class CPU {
      */
     adc(data) {
         var fetched = this.memory.get(data);
-        const tmp = this.register_a + fetched + this.get_flag_bit(Flags.C);
+        const tmp = this.a + fetched + this.get_flag_bit(Flags.C);
 
         // Overflow: https://forums.nesdev.org/viewtopic.php?t=6331
         // https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
         this.set_flag(
             Flags.V,
-            !!(~(this.register_a ^ fetched) & (this.register_a ^ tmp) & 0x0080)
+            !!(~(this.a ^ fetched) & (this.a ^ tmp) & 0x0080)
         );
 
-        this.register_a = tmp & 0xff; // truncate to 255
+        this.a = tmp & 0xff; // truncate to 255
 
         this.set_flag(Flags.C, tmp > 0xff);
-        this.set_flag(Flags.Z, this.register_a === 0);
+        this.set_flag(Flags.Z, this.a === 0);
         this.set_flag(Flags.N, !!(tmp & 0x0080));
     }
 
@@ -915,10 +928,10 @@ export class CPU {
      *     A - M
      */
     cmp(data) {
-        let tmp = this.register_a - this.memory.get(data);
+        let tmp = this.a - this.memory.get(data);
 
-        this.set_flag(Flags.C, this.memory.get(data) <= this.register_a);
-        this.set_flag(Flags.Z, this.register_a === this.memory.get(data));
+        this.set_flag(Flags.C, this.memory.get(data) <= this.a);
+        this.set_flag(Flags.Z, this.a === this.memory.get(data));
         this.set_flag(Flags.N, (tmp & (1 << 7)) > 0);
     }
 
@@ -930,10 +943,10 @@ export class CPU {
      *     X - M
      */
     cpx(data) {
-        let tmp = this.register_x - this.memory.get(data);
+        let tmp = this.x - this.memory.get(data);
 
-        this.set_flag(Flags.C, this.memory.get(data) <= this.register_x);
-        this.set_flag(Flags.Z, this.register_x === this.memory.get(data));
+        this.set_flag(Flags.C, this.memory.get(data) <= this.x);
+        this.set_flag(Flags.Z, this.x === this.memory.get(data));
         this.set_flag(Flags.N, (tmp & (1 << 7)) > 0);
     }
 
@@ -945,10 +958,10 @@ export class CPU {
      *     Y - M
      */
     cpy(data) {
-        let tmp = this.register_y - this.memory.get(data);
+        let tmp = this.y - this.memory.get(data);
 
-        this.set_flag(Flags.C, this.memory.get(data) <= this.register_y);
-        this.set_flag(Flags.Z, this.register_y === this.memory.get(data));
+        this.set_flag(Flags.C, this.memory.get(data) <= this.y);
+        this.set_flag(Flags.Z, this.y === this.memory.get(data));
         this.set_flag(Flags.N, (tmp & (1 << 7)) > 0);
     }
 
@@ -962,20 +975,20 @@ export class CPU {
     sbc(data) {
         // this is the same as ADC, with the memory data ~
         var fetched = ~this.memory.get(data);
-        const tmp = this.register_a + fetched + this.get_flag_bit(Flags.C);
+        const tmp = this.a + fetched + this.get_flag_bit(Flags.C);
 
         //https://stackoverflow.com/questions/29193303/6502-emulation-proper-way-to-implement-adc-and-sbc
         // Overflow: https://forums.nesdev.org/viewtopic.php?t=6331
         // https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
         this.set_flag(
             Flags.V,
-            !!(~(this.register_a ^ fetched) & (this.register_a ^ tmp) & 0x0080)
+            !!(~(this.a ^ fetched) & (this.a ^ tmp) & 0x0080)
         );
 
-        this.register_a = tmp & 0xff; // truncate to 255
+        this.a = tmp & 0xff; // truncate to 255
 
         this.set_flag(Flags.C, tmp > 0xff);
-        this.set_flag(Flags.Z, this.register_a === 0);
+        this.set_flag(Flags.Z, this.a === 0);
         this.set_flag(Flags.N, !!(tmp & 0x0080));
     }
 
@@ -1004,10 +1017,10 @@ export class CPU {
      */
     dex(_) {
         // this is the same as ADC, with the memory data ~
-        this.register_x--;
+        this.x--;
 
-        this.set_flag(Flags.Z, this.register_x === 0);
-        this.set_flag(Flags.N, (this.register_x & (1 << 7)) > 0);
+        this.set_flag(Flags.Z, this.x === 0);
+        this.set_flag(Flags.N, (this.x & (1 << 7)) > 0);
     }
 
     /**
@@ -1019,10 +1032,10 @@ export class CPU {
      */
     dey(_) {
         // this is the same as ADC, with the memory data ~
-        this.register_y--;
+        this.y--;
 
-        this.set_flag(Flags.Z, this.register_y === 0);
-        this.set_flag(Flags.N, (this.register_y & (1 << 7)) > 0);
+        this.set_flag(Flags.Z, this.y === 0);
+        this.set_flag(Flags.N, (this.y & (1 << 7)) > 0);
     }
 
     /**
@@ -1050,10 +1063,10 @@ export class CPU {
      *     X + 1 → X
      */
     inx(_) {
-        this.register_x++;
+        this.x++;
 
-        this.set_flag(Flags.Z, this.register_x === 0);
-        this.set_flag(Flags.N, (this.register_x & (1 << 7)) > 0);
+        this.set_flag(Flags.Z, this.x === 0);
+        this.set_flag(Flags.N, (this.x & (1 << 7)) > 0);
     }
 
     /**
@@ -1064,10 +1077,10 @@ export class CPU {
      *     Y + 1 → Y
      */
     iny(_) {
-        this.register_y++;
+        this.y++;
 
-        this.set_flag(Flags.Z, this.register_y === 0);
-        this.set_flag(Flags.N, (this.register_y & (1 << 7)) > 0);
+        this.set_flag(Flags.Z, this.y === 0);
+        this.set_flag(Flags.N, (this.y & (1 << 7)) > 0);
     }
 
     jmp(_) {
