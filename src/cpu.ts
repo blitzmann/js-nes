@@ -232,6 +232,14 @@ export class CPU {
         [0x50, [this.bvc, this.mode_rel, 2]],
         [0x70, [this.bvs, this.mode_rel, 2]],
 
+        [0x18, [this.clc, this.mode_imp, 2]],
+        [0xd8, [this.cld, this.mode_imp, 2]],
+        [0x58, [this.cli, this.mode_imp, 2]],
+        [0xb8, [this.clv, this.mode_imp, 2]],
+        [0x38, [this.sec, this.mode_imp, 2]],
+        [0xf8, [this.sed, this.mode_imp, 2]],
+        [0x78, [this.sei, this.mode_imp, 2]],
+
         [0xea, [this.nop, this.mode_imp, 2]],
     ]);
 
