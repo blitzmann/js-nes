@@ -289,7 +289,7 @@ export class CPU {
         if (!op_def) {
             console.error('unknown op code: 0x' + opcode.toString(16));
         }
-        const [op, mode, cycles] = op_def;
+        let [op, mode, cycles] = op_def;
         this.mode = mode;
         this.addr = mode.bind(this)();
         this.log(' | ' + op.name.toUpperCase() + ' ');
@@ -306,7 +306,7 @@ export class CPU {
         );
         this.flush_log();
 
-        op.bind(this)(this.addr);
+        cycles += op.bind(this)(this.addr) || 0;
         this.cycles += cycles;
     }
 
