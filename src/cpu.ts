@@ -4,7 +4,7 @@
  * https://www.pagetable.com/c64ref/6502/?tab=3
  */
 
-const NMI_ADDRESS = 0xfffa;
+// const NMI_ADDRESS = 0xfffa;
 const RESET_ADDRESS = 0xfffc;
 const IRQ_ADDRESS = 0xfffe;
 
@@ -223,11 +223,24 @@ export class CPU {
         [0x40, [this.rti, this.mode_imp, 6]],
         [0x60, [this.rts, this.mode_imp, 6]],
 
+        [0x90, [this.bcc, this.mode_rel, 2]],
+        [0xb0, [this.bcs, this.mode_rel, 2]],
+        [0xf0, [this.beq, this.mode_rel, 2]],
+        [0x30, [this.bmi, this.mode_rel, 2]],
+        [0xd0, [this.bne, this.mode_rel, 2]],
+        [0x10, [this.bpl, this.mode_rel, 2]],
+        [0x50, [this.bvc, this.mode_rel, 2]],
+        [0x70, [this.bvs, this.mode_rel, 2]],
+
         [0xea, [this.nop, this.mode_imp, 2]],
     ]);
 
     pc() {
         return (this.ip += 1);
+    }
+
+    same_page(addr1, addr2) {
+        return (addr1 & 0xff00) === (addr2 & 0xff00);
     }
 
     load_program(bytes) {
@@ -1164,6 +1177,128 @@ export class CPU {
         const low = this.stack_pop();
         const high = this.stack_pop();
         this.ip = (high << 8) | low;
+    }
+
+    /**
+     * This instruction tests the state of the carry bit and takes a conditional branch if the carry bit is reset.
+     *
+     * It affects no flags or registers other than the program counter and then only if the C flag is not on.
+     *
+     *     Branch on C = 0
+     */
+    bcc(data) {
+        if (!this.get_flag(Flags.C)) {
+            return this.branch(data) + 1;
+        }
+        return 0;
+    }
+
+    /**
+     * This instruction takes the conditional branch if the carry flag is on.
+     *
+     * BCS does not affect any of the flags or registers except for the program counter and only then if the carry flag is on.
+     *
+     *      Branch on C = 1
+     */
+    bcs(data) {
+        if (this.get_flag(Flags.C)) {
+            return this.branch(data) + 1;
+        }
+        return 0;
+    }
+
+    /**
+     * This instruction could also be called "Branch on Equal."
+     *
+     * It takes a conditional branch whenever the Z flag is on or the previ­ous result is equal to 0.
+     *
+     * BEQ does not affect any of the flags or registers other than the program counter and only then when the Z flag is set.
+     *
+     *     Branch on Z = 1
+     */
+    beq(data) {
+        if (this.get_flag(Flags.Z)) {
+            return this.branch(data) + 1;
+        }
+        return 0;
+    }
+
+    /**
+     * This instruction takes the conditional branch if the N bit is set.
+     *
+     * BMI does not affect any of the flags or any other part of the machine other than the program counter and then only if the N bit is on.
+     *
+     *     Branch on N = 1
+     */
+    bmi(data) {
+        if (this.get_flag(Flags.N)) {
+            return this.branch(data) + 1;
+        }
+        return 0;
+    }
+
+    /**
+     * This instruction could also be called "Branch on Not Equal." It tests the Z flag and takes the conditional branch if the Z flag is not on, indicating that the previous result was not zero.
+     *
+     * BNE does not affect any of the flags or registers other than the program counter and only then if the Z flag is reset.
+     *
+     *     Branch on Z = 0
+     */
+    bne(data) {
+        if (!this.get_flag(Flags.Z)) {
+            return this.branch(data) + 1;
+        }
+        return 0;
+    }
+
+    /**
+     * This instruction is the complementary branch to branch on result minus. It is a conditional branch which takes the branch when the N bit is reset (0). BPL is used to test if the previous result bit 7 was off (0) and branch on result minus is used to determine if the previous result was minus or bit 7 was on (1).
+     *
+     * The instruction affects no flags or other registers other than the P counter and only affects the P counter when the N bit is reset.
+     *
+     *     Branch on N = 0
+     */
+    bpl(data) {
+        if (!this.get_flag(Flags.N)) {
+            return this.branch(data) + 1;
+        }
+        return 0;
+    }
+
+    /**
+     * This instruction tests the status of the V flag and takes the conditional branch if the flag is not set.
+     *
+     * BVC does not affect any of the flags and registers other than the program counter and only when the overflow flag is reset.
+     *
+     *     Branch on V = 0
+     */
+    bvc(data) {
+        if (!this.get_flag(Flags.V)) {
+            return this.branch(data) + 1;
+        }
+        return 0;
+    }
+
+    /**
+     * This instruction tests the V flag and takes the conditional branch if V is on.
+     *
+     * BVS does not affect any flags or registers other than the program, counter and only when the overflow flag is set.
+     *
+     *     Branch on V = 1
+     */
+    bvs(data) {
+        if (this.get_flag(Flags.V)) {
+            return this.branch(data) + 1;
+        }
+        return 0;
+    }
+
+    branch(rel_addr) {
+        const addr = this.ip + rel_addr;
+        // add an extra cycle if it's on a different page
+        const ret = this.same_page(addr, this.ip) ? 0 : 1;
+        this.ip = addr;
+        return ret;
     }
 
     nop(_) {}

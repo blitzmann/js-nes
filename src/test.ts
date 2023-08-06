@@ -34,7 +34,7 @@ test('addr_mode_indirect', (t) => {
     cpu.memory.set(0xff82, 0xc4);
     cpu.memory.set(0xff83, 0x80);
 
-    cpu.ip(); // increment program counter - we don't actually need the opcode for this test
+    cpu.pc(); // increment program counter - we don't actually need the opcode for this test
     var data = cpu.mode_ind();
     t.is(data, 0x80c4);
 });
@@ -52,7 +52,7 @@ test('addr_mode_izx', (t) => {
     cpu.memory.set(0x76, 0x30);
     cpu.memory.set(0x3023, 0xa5);
 
-    cpu.ip(); // increment program counter - we don't actually need the opcode for this test
+    cpu.pc(); // increment program counter - we don't actually need the opcode for this test
     var data = cpu.mode_izx();
     t.is(data, 0xa5);
 });
@@ -70,7 +70,7 @@ test('addr_mode_izy', (t) => {
     cpu.memory.set(0x71, 0x35);
     cpu.memory.set(0x3553, 0x23);
 
-    cpu.ip(); // increment program counter - we don't actually need the opcode for this test
+    cpu.pc(); // increment program counter - we don't actually need the opcode for this test
     var data = cpu.mode_izy();
     t.is(data, 0x23);
 });
@@ -83,8 +83,8 @@ test('addr_mode_rel', (t) => {
     0xf0, 0x03 // ($70),Y
   ]);
 
-    cpu.ip(); // increment program counter twice
-    cpu.ip();
+    cpu.pc(); // increment program counter twice
+    cpu.pc();
     var data = cpu.mode_rel();
     t.is(data, 0x05);
 });
