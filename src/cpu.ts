@@ -214,8 +214,8 @@ export class CPU {
         [0xe8, [this.inx, this.mode_imp, 2]],
         [0xc8, [this.iny, this.mode_imp, 2]],
 
-        [0xa4, [this.ldy, this.mode_zp0, 3]],
         [0xc8, [this.iny, this.mode_imp, 2]],
+
         [0x00, [this.brk, this.mode_imp, 7]],
 
         [0x6c, [this.jmp, this.mode_ind, 5]],
@@ -292,6 +292,16 @@ export class CPU {
         } else {
             this.status_register &= ~flag;
         }
+    }
+
+    stack_push(data) {
+        this.memory.set(this.stack_offset + this.sp, data);
+        this.sp--;
+    }
+
+    stack_pop(data) {
+        this.memory.set(this.stack_offset + this.sp, data);
+        this.sp++;
     }
 
     get_flag(flag: Flags) {
@@ -1088,7 +1098,14 @@ export class CPU {
     }
 
     brk(_) {
-        this.stopped = true;
+        this.set_flag(Flags.I, true);
+        // push program counter high-bit first
+        this.stack_push(this.ip >> 8);
+        this.stack_push(this.ip & 0xff);
+        // push status register with the B flag set
+        this.stack_push((this.status_register |= Flags.B));
+        // get IRQ address
+        this.ip = this.fetch_word(IRQ_ADDRESS);
     }
 
     nop(_) {}
