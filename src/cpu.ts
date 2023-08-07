@@ -18,14 +18,25 @@ export class CPU {
     ip = 0;
     memory = new Memory(0xffff);
     _log = '';
+    _logSection = '';
+    _sectionPad = 0;
+
+    log_section(totalSpace) {
+        this._log += this._logSection.padEnd(this._sectionPad, ' ');
+        this._sectionPad = totalSpace;
+        this._logSection = '';
+    }
 
     log(msg) {
-        this._log += msg;
+        this._logSection += msg;
     }
 
     flush_log() {
+        this._log += this._logSection.padEnd(this._sectionPad, ' ');
         console.log(this._log);
         this._log = '';
+        this._logSection = '';
+        this._sectionPad = 0;
     }
 
     /**
@@ -280,9 +291,11 @@ export class CPU {
     }
 
     step() {
+        this.log_section(5);
         this.log(
             `${this.ip.toString(16).toUpperCase()}`.padEnd(5, ' ') + ' | '
         );
+        this.log_section(10);
         const opcode = this.cpu_fetch();
 
         const op_def = this.opcodes.get(opcode);
@@ -292,17 +305,26 @@ export class CPU {
         let [op, mode, cycles] = op_def;
         this.mode = mode;
         this.addr = mode.bind(this)();
+        this.log_section(5);
         this.log(' | ' + op.name.toUpperCase() + ' ');
+        this.log_section(50);
         this.log(
-            ` | A:${this.a.toString(16).toUpperCase()} X:${this.x
+            ` | A:${this.a
                 .toString(16)
-                .toUpperCase()} Y: ${this.y
+                .toUpperCase()
+                .padStart(2, '0')} X:${this.x
                 .toString(16)
-                .toUpperCase()} P:${this.sr
+                .toUpperCase()
+                .padStart(2, '0')} Y:${this.y
                 .toString(16)
-                .toUpperCase()} SP:${this.sp.toString(16).toUpperCase()} CYC:${
-                this.cycles
-            }`
+                .toUpperCase()
+                .padStart(2, '0')} P:${this.sr
+                .toString(16)
+                .toUpperCase()
+                .padStart(2, '0')} SP:${this.sp
+                .toString(16)
+                .toUpperCase()
+                .padStart(2, '0')} CYC:${this.cycles}`
         );
         this.flush_log();
 
@@ -330,7 +352,7 @@ export class CPU {
 
     reset() {
         const addr = this.fetch_word(RESET_ADDRESS);
-        this.sr = 0;
+        this.sr = parseInt('24', 16);
         this.a = 0;
         this.x = 0;
         this.y = 0;
@@ -758,29 +780,29 @@ export class CPU {
      *     A↓
      */
     pha(_) {
-        this.memory.set(this.stack_offset + this.sp, this.a);
-        this.sp--;
+        this.stack_push(this.a);
     }
 
     /**
-     * This instruction transfers the contents of the processor status reg­ister unchanged to the stack, as governed by the stack pointer.
+     * This instruction transfers the contents of the processor status reg­ister unchanged to the stack, as governed by the stack pointer. The status register will be pushed with the break flag and bit 5 set to 1.
      *
      * The PHP instruction affects no registers or flags in the micropro­cessor.
      *
      *     P↓
      */
     php(_) {
-        this.memory.set(this.stack_offset + this.sp, this.sr);
+        this.stack_push(this.sr | Flags.B | Flags._);
     }
 
     /**
      * This instruction adds 1 to the current value of the stack pointer and uses it to address the stack and loads the contents of the stack into the A register.
      *
      * The PLA instruction does not affect the carry or overflow flags. It sets N if the bit 7 is on in accumulator A as a result of instructions, otherwise it is reset. If accumulator A is zero as a result of the PLA, then the Z flag is set, otherwise it is reset. The PLA instruction changes content of the accumulator A to the contents of the memory location at stack register plus 1 and also increments the stack register.
+     *
+     *     A↑
      */
     pla(_) {
-        this.sp++;
-        this.a = this.memory.get(this.stack_offset + this.sp);
+        this.a = this.stack_pop();
         this.set_flag(Flags.Z, this.a === 0);
         this.set_flag(Flags.N, !!(this.a & (1 << 7)));
     }
@@ -789,10 +811,11 @@ export class CPU {
      * This instruction transfers the next value on the stack to the Proces­sor Status register, thereby changing all of the flags and setting the mode switches to the values from the stack.
      *
      * The PLP instruction affects no registers in the processor other than the status register. This instruction could affect all flags in the status register.
+     *
+     *     P↑
      */
     plp(_) {
-        this.sp++;
-        this.sr = this.memory.get(this.stack_offset + this.sp);
+        this.sr = this.stack_pop();
     }
 
     /**
