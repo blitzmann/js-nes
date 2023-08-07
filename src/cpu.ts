@@ -923,8 +923,8 @@ export class CPU {
      *
      *     A ∧ M → A
      */
-    and(addr) {
-        this.a = this.a & this.memory.get(addr);
+    and(data) {
+        this.a = this.a & data;
 
         this.set_flag(Flags.N, (this.a & (1 << 7)) > 0);
         this.set_flag(Flags.Z, this.a === 0);
