@@ -755,7 +755,7 @@ export class CPU {
      *     X → A
      */
     txa(_) {
-        this.a = this.a;
+        this.a = this.x;
 
         this.set_flag(Flags.Z, this.a === 0);
         this.set_flag(Flags.N, !!(this.a & (1 << 7)));
