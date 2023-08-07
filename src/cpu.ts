@@ -3,6 +3,7 @@
  * https://www.masswerk.at/6502/6502_instruction_set.html
  * https://www.pagetable.com/c64ref/6502/?tab=3
  */
+import * as fs from 'fs';
 
 import { Memory } from './memory';
 
@@ -20,6 +21,11 @@ export class CPU {
     _log = '';
     _logSection = '';
     _sectionPad = 0;
+    _prevLog = '';
+
+    f_byte(byte) {
+        return byte.toString(16).toUpperCase().padStart(2, '0');
+    }
 
     log_section(totalSpace) {
         this._log += this._logSection.padEnd(this._sectionPad, ' ');
@@ -33,6 +39,7 @@ export class CPU {
 
     flush_log() {
         this._log += this._logSection.padEnd(this._sectionPad, ' ');
+        this._prevLog = this._log;
         console.log(this._log);
         this._log = '';
         this._logSection = '';
@@ -286,15 +293,14 @@ export class CPU {
 
     cpu_fetch() {
         const ret = this.memory.get(this.ip++);
-        this.log(ret.toString(16).padStart(2, '0').toUpperCase() + ' ');
+        this.log(this.f_byte(ret) + ' ');
         return ret;
     }
-
+    i = 0;
     step() {
-        this.log_section(5);
-        this.log(
-            `${this.ip.toString(16).toUpperCase()}`.padEnd(5, ' ') + ' | '
-        );
+        // this.log(`${this.i++}: `);
+        this.log_section(7);
+        this.log(`${this.f_byte(this.ip)}`.padEnd(5, ' ') + ' | ');
         this.log_section(10);
         const opcode = this.cpu_fetch();
 
@@ -309,24 +315,23 @@ export class CPU {
         this.log(' | ' + op.name.toUpperCase() + ' ');
         this.log_section(50);
         this.log(
-            ` | A:${this.a
-                .toString(16)
-                .toUpperCase()
-                .padStart(2, '0')} X:${this.x
-                .toString(16)
-                .toUpperCase()
-                .padStart(2, '0')} Y:${this.y
-                .toString(16)
-                .toUpperCase()
-                .padStart(2, '0')} P:${this.sr
-                .toString(16)
-                .toUpperCase()
-                .padStart(2, '0')} SP:${this.sp
-                .toString(16)
-                .toUpperCase()
-                .padStart(2, '0')} CYC:${this.cycles}`
+            ` | A:${this.f_byte(this.a)} X:${this.f_byte(
+                this.x
+            )} Y:${this.f_byte(this.y)} P:${this.f_byte(
+                this.sr
+            )} SP:${this.f_byte(this.sp)} CYC:${this.cycles}`
         );
         this.flush_log();
+
+        let test = this.test_file[this.i++].trim().toUpperCase();
+        if (this._prevLog.trim().toUpperCase() !== test) {
+            console.error(
+                `Error! Test does not batch with expected results! Line: ${this.i}`
+            );
+            console.log(`\t OURS:   ${this._prevLog}`);
+            console.log(`\t THEIRS: ${test}`);
+            return;
+        }
 
         cycles += op.bind(this)(this.addr) || 0;
         this.cycles += cycles;
@@ -350,6 +355,7 @@ export class CPU {
         return (high << 8) | low;
     }
 
+    test_file = null;
     reset() {
         const addr = this.fetch_word(RESET_ADDRESS);
         this.sr = parseInt('24', 16);
@@ -360,6 +366,13 @@ export class CPU {
         this.ip = addr;
         this.set_flag(Flags.I, true);
         this.cycles = 7;
+
+        this.test_file = fs
+            .readFileSync(
+                'C:\\gitRoot\\js-nes\\js-nes\\js-nes\\nestest_results.txt',
+                'utf-8'
+            )
+            .split(/\r?\n/);
     }
 
     peek(addr) {
@@ -405,6 +418,7 @@ export class CPU {
      */
     mode_imm() {
         const ret = this.cpu_fetch();
+        // this.log('#$' + ret.toString(16).toUpperCase().padStart(2, '0'));
         return ret;
     }
 
@@ -791,7 +805,7 @@ export class CPU {
      *     P↓
      */
     php(_) {
-        this.stack_push(this.sr | Flags.B | Flags._);
+        this.stack_push(this.sr | Flags.B | Flags.Unsued);
     }
 
     /**
@@ -815,7 +829,9 @@ export class CPU {
      *     P↑
      */
     plp(_) {
-        this.sr = this.stack_pop();
+        // We ignore bit 4 here with & 0xef.
+        // Some sources say we ignore bit 5 as well, but according to nestest output it seems to always be set?
+        this.sr = (this.stack_pop() & 0xef) | Flags.Unsued;
     }
 
     /**
@@ -1006,10 +1022,10 @@ export class CPU {
      *     A - M
      */
     cmp(data) {
-        let tmp = this.a - this.memory.get(data);
+        let tmp = this.a - data;
 
-        this.set_flag(Flags.C, this.memory.get(data) <= this.a);
-        this.set_flag(Flags.Z, this.a === this.memory.get(data));
+        this.set_flag(Flags.C, data <= this.a);
+        this.set_flag(Flags.Z, this.a === data);
         this.set_flag(Flags.N, (tmp & (1 << 7)) > 0);
     }
 
@@ -1434,39 +1450,58 @@ export class CPU {
     nop(_) {}
 }
 
+/**
+ * [NV-BDIZC]
+ */
 export enum Flags {
     /**
      * The carry flag (C) flag is used as a buffer and as a borrow in arithmetic operations. Any comparisons will update this additionally to the Z and N flags, as do shift and rotate operations.
+     *
+     * Bit 0
      */
     C = 1 << 0,
     /**
      * The zero flag (Z) indicates a value of all zero bits and the negative flag (N) indicates the presence of a set sign bit in bit-position 7. These flags are always updated, whenever a value is transferred to a CPU register (A,X,Y) and as a result of any logical ALU operations. The Z and N flags are also updated by increment and decrement operations acting on a memory location.
+     *
+     * Bit 1
      */
     Z = 1 << 1,
     /**
      * The interrupt inhibit flag (I) blocks any maskable interrupt requests (IRQ).
+     *
+     * Bit 2
      */
     I = 1 << 2,
     /**
      * The decimal flag (D) sets the ALU to binary coded decimal (BCD) mode for additions and subtractions (ADC, SBC). This flag is not used in the NES.
+     *
+     * Bit 3
      */
     D = 1 << 3,
     /**
      * The break flag (B) is not an actual flag implemented in a register, and rather appears only, when the status register is pushed onto or pulled from the stack. When pushed, it will be 1 when transfered by a BRK or PHP instruction, and zero otherwise (i.e., when pushed by a hardware interrupt). When pulled into the status register (by PLP or on RTI), it will be ignored.
      *
      * In other words, the break flag will be inserted, whenever the status register is transferred to the stack by software (BRK or PHP), and will be zero, when transferred by hardware. Since there is no actual slot for the break flag, it will be always ignored, when retrieved (PLP or RTI). The break flag is not accessed by the CPU at anytime and there is no internal representation. Its purpose is more for patching, to discern an interrupt caused by a BRK instruction from a normal interrupt initiated by hardware.
+     *
+     * Bit 4
      */
     B = 1 << 4,
     /**
-     * Unused
+     * Unused (but certain instructions set it to 1, such as PHP)
+     *
+     * Bit 5
      */
-    _ = 1 << 5,
+    Unsued = 1 << 5,
     /**
      * The overflow flag (V) indicates overflow with signed binary arithmetics. As a signed byte represents a range of -128 to +127, an overflow can never occur when the operands are of opposite sign, since the result will never exceed this range. Thus, overflow may only occur, if both operands are of the same sign. Then, the result must be also of the same sign. Otherwise, overflow is detected and the overflow flag is set. (I.e., both operands have a zero in the sign position at bit 7, but bit 7 of the result is 1, or, both operands have the sign-bit set, but the result is positive.)
+     *
+     * Bit 6
      */
     V = 1 << 6,
     /**
      * The zero flag (Z) indicates a value of all zero bits and the negative flag (N) indicates the presence of a set sign bit in bit-position 7. These flags are always updated, whenever a value is transferred to a CPU register (A,X,Y) and as a result of any logical ALU operations. The Z and N flags are also updated by increment and decrement operations acting on a memory location.
+     *
+     * Bit 7
      */
     N = 1 << 7,
 }
