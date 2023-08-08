@@ -968,8 +968,8 @@ export class CPU {
      *
      *     A ⊻ M → A
      */
-    eor(addr) {
-        this.a = this.a ^ this.memory.get(addr);
+    eor(data) {
+        this.a = this.a ^ data;
 
         this.set_flag(Flags.N, (this.a & (1 << 7)) > 0);
         this.set_flag(Flags.Z, this.a === 0);
@@ -982,8 +982,8 @@ export class CPU {
      *
      *     A ∨ M → A
      */
-    ora(addr) {
-        this.a = this.a | this.memory.get(addr);
+    ora(data) {
+        this.a = this.a | data;
 
         this.set_flag(Flags.N, (this.a & (1 << 7)) > 0);
         this.set_flag(Flags.Z, this.a === 0);
@@ -997,15 +997,11 @@ export class CPU {
      *     A + M + C → A, C
      */
     adc(data) {
-        var fetched = this.memory.get(data);
-        const tmp = this.a + fetched + this.get_flag_bit(Flags.C);
+        const tmp = this.a + data + this.get_flag_bit(Flags.C);
 
         // Overflow: https://forums.nesdev.org/viewtopic.php?t=6331
         // https://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-        this.set_flag(
-            Flags.V,
-            !!(~(this.a ^ fetched) & (this.a ^ tmp) & 0x0080)
-        );
+        this.set_flag(Flags.V, !!(~(this.a ^ data) & (this.a ^ tmp) & 0x0080));
 
         this.a = tmp & 0xff; // truncate to 255
 
@@ -1037,10 +1033,10 @@ export class CPU {
      *     X - M
      */
     cpx(data) {
-        let tmp = this.x - this.memory.get(data);
+        let tmp = this.x - data;
 
-        this.set_flag(Flags.C, this.memory.get(data) <= this.x);
-        this.set_flag(Flags.Z, this.x === this.memory.get(data));
+        this.set_flag(Flags.C, data <= this.x);
+        this.set_flag(Flags.Z, this.x === data);
         this.set_flag(Flags.N, (tmp & (1 << 7)) > 0);
     }
 
@@ -1052,10 +1048,10 @@ export class CPU {
      *     Y - M
      */
     cpy(data) {
-        let tmp = this.y - this.memory.get(data);
+        let tmp = this.y - data;
 
-        this.set_flag(Flags.C, this.memory.get(data) <= this.y);
-        this.set_flag(Flags.Z, this.y === this.memory.get(data));
+        this.set_flag(Flags.C, data <= this.y);
+        this.set_flag(Flags.Z, this.y === data);
         this.set_flag(Flags.N, (tmp & (1 << 7)) > 0);
     }
 
@@ -1068,7 +1064,7 @@ export class CPU {
      */
     sbc(data) {
         // this is the same as ADC, with the memory data ~
-        var fetched = ~this.memory.get(data);
+        var fetched = ~data;
         const tmp = this.a + fetched + this.get_flag_bit(Flags.C);
 
         //https://stackoverflow.com/questions/29193303/6502-emulation-proper-way-to-implement-adc-and-sbc
@@ -1081,7 +1077,7 @@ export class CPU {
 
         this.a = tmp & 0xff; // truncate to 255
 
-        this.set_flag(Flags.C, tmp > 0xff);
+        this.set_flag(Flags.C, tmp >= 0x00);
         this.set_flag(Flags.Z, this.a === 0);
         this.set_flag(Flags.N, !!(tmp & 0x0080));
     }
